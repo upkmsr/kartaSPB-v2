@@ -1,0 +1,347 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap");
+
+:root {
+  color: #e8ece9;
+  background: #0b0f10;
+  font-family: "Manrope", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --ink: #e8ece9;
+  --muted: #84908c;
+  --panel: #111718;
+  --panel-raised: #161d1e;
+  --line: #253032;
+  --accent: #bbff3c;
+  --accent-dim: rgba(187, 255, 60, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 1024px;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: 76px 1fr;
+  min-height: 100%;
+  background: #0b0f10;
+}
+
+.topbar {
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 30px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(13, 18, 19, 0.96);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 500;
+  transform: rotate(45deg);
+}
+
+.brand-mark::first-letter {
+  transform: rotate(-45deg);
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.16em;
+}
+
+.brand p,
+.topbar-meta,
+.section-label,
+.eyebrow {
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+}
+
+.brand p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.13em;
+}
+
+.topbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  color: #697471;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.version {
+  padding: 7px 10px;
+  border: 1px solid #344143;
+  color: #a6b0ad;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 286px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.sidebar {
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 29px 20px 22px;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.section-label {
+  margin: 0 10px 14px;
+  color: #596462;
+  font-size: 9px;
+  letter-spacing: 0.17em;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 10px;
+  border-bottom: 1px solid rgba(37, 48, 50, 0.55);
+  color: #b8c0bd;
+  font-size: 12px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 9px currentColor;
+}
+
+.status-pill--ready {
+  color: var(--accent);
+}
+
+.status-pill--offline {
+  color: #ff6f5f;
+}
+
+.status-pill--checking {
+  color: #e2bd57;
+}
+
+.nav-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px;
+  border: 0;
+  border-left: 2px solid transparent;
+  color: #76817e;
+  background: transparent;
+  text-align: left;
+}
+
+.nav-item--active {
+  border-left-color: var(--accent);
+  color: var(--ink);
+  background: linear-gradient(90deg, var(--accent-dim), transparent 85%);
+}
+
+.nav-icon {
+  width: 20px;
+  color: var(--accent);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 18px;
+  text-align: center;
+}
+
+.soon {
+  margin-left: auto;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+}
+
+.sidebar-note {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 10px;
+  margin-top: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.sidebar-note span {
+  color: var(--accent);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+}
+
+.sidebar-note p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.map-workspace {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  place-items: center;
+  background: #0d1213;
+}
+
+.map-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(rgba(63, 79, 80, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(63, 79, 80, 0.16) 1px, transparent 1px),
+    radial-gradient(circle at 65% 45%, rgba(187, 255, 60, 0.05), transparent 30%);
+  background-size: 52px 52px, 52px 52px, 100% 100%;
+  mask-image: linear-gradient(to bottom right, black, transparent 90%);
+}
+
+.map-grid::after {
+  position: absolute;
+  width: 48vw;
+  height: 48vw;
+  border: 1px solid rgba(187, 255, 60, 0.08);
+  border-radius: 50%;
+  content: "";
+  transform: translate(45vw, 5vh);
+}
+
+.map-placeholder {
+  z-index: 1;
+  width: min(480px, 48vw);
+  padding: 44px;
+  border: 1px solid #293436;
+  background: rgba(17, 23, 24, 0.88);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.3);
+}
+
+.map-placeholder__marker {
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin-bottom: 36px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 10px rgba(187, 255, 60, 0.06);
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+}
+
+.map-placeholder h2 {
+  max-width: 360px;
+  margin: 0;
+  font-size: clamp(24px, 2.2vw, 36px);
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.map-placeholder > p:last-child {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.map-coordinate {
+  position: absolute;
+  right: 24px;
+  color: #4e5a58;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  writing-mode: vertical-rl;
+}
+
+.map-coordinate--top {
+  top: 24px;
+}
+
+.map-coordinate--bottom {
+  bottom: 24px;
+}
+
+.viewport-warning {
+  display: none;
+}
+
+@media (max-width: 1279px) {
+  .viewport-warning {
+    position: fixed;
+    z-index: 10;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 10px;
+    padding: 40px;
+    color: var(--ink);
+    background: #0b0f10;
+    text-align: center;
+  }
+
+  .viewport-warning strong {
+    color: var(--accent);
+    letter-spacing: 0.08em;
+  }
+
+  .viewport-warning span {
+    color: var(--muted);
+  }
+}
