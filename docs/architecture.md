@@ -16,9 +16,13 @@ At narrower desktop window sizes, the application may show a minimum-width notic
 ```text
 External open data
         ↓
-Source adapter
+Provider PBF / source adapter
         ↓
-Staging
+Immutable local source (`data/sources`)
+        ↓
+Derived extract (`data/cache`)
+        ↓
+Source-shaped PostGIS staging
         ↓
 Normalisation
         ↓
@@ -40,12 +44,13 @@ The source-to-canonical boundary is the central architectural rule. The frontend
 - **Frontend:** React, TypeScript, Vite, and MapLibre GL JS. FOUNDATION 0 contains a desktop shell and a map workspace placeholder only.
 - **Backend:** FastAPI exposes transport concerns. Domain code owns application meaning. The data package will own adapters, imports, and normalisation.
 - **Database:** PostgreSQL/PostGIS holds the canonical spatial system of record. Alembic exclusively manages schema changes.
-- **Infrastructure:** Docker Compose makes database initialisation, migrations, API startup, and the frontend deterministic.
+- **OSM data engine:** a dedicated Docker service combines pinned Osmium and osm2pgsql versions with Python orchestration. Osmium validates and extracts; osm2pgsql Flex translates OSM primitives without category filtering.
+- **Infrastructure:** Docker Compose makes database initialisation, migrations, API startup, frontend, and data tooling deterministic.
 
 ## Dependency direction
 
-Source-specific concepts stop at the data layer. Domain logic may depend on canonical models, and API handlers may depend on domain services. The reverse dependencies are not allowed. No category-specific ingestion subsystems are introduced during FOUNDATION 0.
+Source-specific concepts stop at the data layer. Domain logic may depend on canonical models, and API handlers may depend on domain services. The reverse dependencies are not allowed. The OSM importer writes only `staging` plus `meta.dataset_sources` and `meta.import_runs`; it does not create school, pharmacy, park, or transport domain tables.
 
 ## Deferred work
 
-OSM download/import, osm2pgsql, categories, POIs, basemap tiles, routing, and scoring belong to later foundations. In particular, FOUNDATION 1 is the OSM Data Engine and is not part of this repository state.
+Category extraction, a canonical catalogue, assembled relation geometries, exact administrative clipping, basemap layers, routing, and scoring remain deferred. FOUNDATION 2 owns multipolygon holes, route and boundary relation geometry, and deeper geometry correctness.

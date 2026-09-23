@@ -2,7 +2,7 @@
 
 KARTASPB v2 is a desktop-only, data-driven GIS platform for analysing how convenient places in Saint Petersburg and the Leningrad Region are for living. It is not a property listing, mortgage, or residential-complex catalogue.
 
-This repository is a clean FOUNDATION 0 implementation. No real datasets are imported yet. The former `upkmsr/kartaSPB` project remains a reference implementation and is not modified by this repository.
+FOUNDATION 1 adds a source-oriented OpenStreetMap ingestion engine. It downloads a provider PBF safely, creates configured geographic extracts with Osmium, imports complete raw tags and OSM identity through osm2pgsql Flex, and stops at PostGIS `staging`. The former `upkmsr/kartaSPB` project remains a reference implementation and is not modified by this repository.
 
 ## Architecture
 
@@ -59,11 +59,33 @@ docker compose run --rm migration alembic -c /app/alembic.ini revision --autogen
 
 Database objects are managed by Alembic. The application does not call `Base.metadata.create_all()`.
 
+## OpenStreetMap ingestion
+
+The tooling runs entirely in the Compose `ingest` service; no host installation of Osmium or osm2pgsql is required. Start the database and migrations first, then use this copy/paste workflow:
+
+```bash
+docker compose up -d db migration
+docker compose run --rm ingest download
+docker compose run --rm ingest extract --region spb_smoke
+docker compose run --rm ingest import --region spb_smoke
+docker compose run --rm ingest status
+docker compose run --rm ingest inspect
+```
+
+The complete coarse target profile uses the same workflow:
+
+```bash
+docker compose run --rm ingest extract --region spb_lo
+docker compose run --rm ingest import --region spb_lo
+```
+
+`download --force` explicitly checks for an upstream refresh; `extract --force` rebuilds an extract. Normal download and extract commands are checksum-idempotent. `spb_lo` is a geographic bounding box, not an official administrative boundary.
+
 ## Checks
 
 ```bash
 docker compose exec backend pytest
-docker compose exec backend ruff check app tests
+docker compose exec backend ruff check app tests /migrations
 docker compose exec backend mypy app
 
 docker compose run --rm frontend-build npm test -- --run

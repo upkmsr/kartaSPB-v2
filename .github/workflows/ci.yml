@@ -67,3 +67,12 @@ jobs:
       - run: npm run typecheck
       - run: npm test -- --run
       - run: npm run build
+
+  ingest-tooling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned OSM tooling
+        run: docker compose build ingest
+      - name: Report OSM tooling versions
+        run: docker compose run --rm --no-deps ingest versions
