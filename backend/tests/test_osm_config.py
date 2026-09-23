@@ -1,0 +1,36 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from app.data.osm.config import load_region, load_regions, load_source
+
+
+def test_source_metadata_preserves_license_and_attribution() -> None:
+    source = load_source()
+
+    assert source.provider == "Geofabrik GmbH"
+    assert source.source_type == "osm_pbf"
+    assert source.source_url.endswith("northwestern-fed-district-latest.osm.pbf")
+    assert "ODbL" in source.license
+    assert "OpenStreetMap contributors" in source.attribution
+
+
+def test_region_configuration_contains_smoke_and_full_profiles() -> None:
+    regions = load_regions()
+
+    assert set(regions) >= {"spb_smoke", "spb_lo"}
+    assert regions["spb_smoke"].bbox[0] < regions["spb_smoke"].bbox[2]
+    assert "not an official administrative boundary" in regions["spb_lo"].description.lower()
+
+
+def test_invalid_region_bbox_is_rejected(tmp_path: Path) -> None:
+    config_dir = tmp_path / "config/osm"
+    config_dir.mkdir(parents=True)
+    (config_dir / "regions.json").write_text(
+        json.dumps({"bad": {"type": "bbox", "bbox": [30, 60, 20, 50]}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="invalid bbox"):
+        load_region("bad", tmp_path)

@@ -2,7 +2,8 @@ FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PROJECT_ROOT=/workspace
 
 WORKDIR /app
 
@@ -13,8 +14,10 @@ RUN pip install --upgrade pip && pip install '.[dev]'
 COPY backend/tests ./tests
 COPY backend/alembic.ini ./alembic.ini
 COPY migrations /migrations
+COPY config /workspace/config
 
-RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app /migrations
+RUN useradd --create-home --uid 10001 appuser \
+    && chown -R appuser:appuser /app /migrations /workspace
 USER appuser
 
 EXPOSE 8000

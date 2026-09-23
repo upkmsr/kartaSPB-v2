@@ -17,6 +17,12 @@ data/sources/*
 data/cache/*
 !data/sources/.gitkeep
 !data/cache/.gitkeep
+!data/sources/osm/
+!data/cache/osm/
+data/sources/osm/*
+data/cache/osm/*
+!data/sources/osm/.gitkeep
+!data/cache/osm/.gitkeep
 
 *.osm
 *.osm.pbf

@@ -84,5 +84,22 @@ services:
       target: build
     command: ["npm", "run", "build"]
 
+  ingest:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: ingest/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://kartaspb:change-me@db:5432/kartaspb}
+      PROJECT_ROOT: /workspace
+    volumes:
+      - ./config:/workspace/config:ro
+      - ./data:/workspace/data
+    depends_on:
+      db:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+
 volumes:
   postgres-data:

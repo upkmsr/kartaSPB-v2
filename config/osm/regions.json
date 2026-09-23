@@ -1,0 +1,12 @@
+{
+  "spb_smoke": {
+    "type": "bbox",
+    "bbox": [30.20, 59.85, 30.50, 60.08],
+    "description": "Development and acceptance extract covering central and northern Saint Petersburg. Geographic test box, not an administrative boundary."
+  },
+  "spb_lo": {
+    "type": "bbox",
+    "bbox": [27.50, 58.35, 35.00, 61.80],
+    "description": "Coarse geographic extract covering Saint Petersburg and Leningrad Oblast. Not an official administrative boundary."
+  }
+}

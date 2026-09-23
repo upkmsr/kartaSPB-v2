@@ -1,0 +1,9 @@
+{
+  "name": "osm_geofabrik_northwestern_federal_district",
+  "provider": "Geofabrik GmbH",
+  "source_type": "osm_pbf",
+  "source_url": "https://download.geofabrik.de/russia/northwestern-fed-district-latest.osm.pbf",
+  "checksum_url": "https://download.geofabrik.de/russia/northwestern-fed-district-latest.osm.pbf.md5",
+  "license": "Open Database License 1.0 (ODbL-1.0)",
+  "attribution": "© OpenStreetMap contributors; extract provided by Geofabrik GmbH"
+}
