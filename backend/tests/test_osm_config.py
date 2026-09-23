@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from app.data.osm.config import load_region, load_regions, load_source
+from app.data.osm.config import load_region, load_regions, load_source, project_root
 
 
 def test_source_metadata_preserves_license_and_attribution() -> None:
@@ -34,3 +34,10 @@ def test_invalid_region_bbox_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="invalid bbox"):
         load_region("bad", tmp_path)
+
+
+def test_flex_marks_untagged_relation_member_ways_for_stage_two() -> None:
+    flex = (project_root() / "config/osm/flex.lua").read_text(encoding="utf-8")
+
+    assert "function osm2pgsql.select_relation_members(relation)" in flex
+    assert "osm2pgsql.way_member_ids(relation)" in flex

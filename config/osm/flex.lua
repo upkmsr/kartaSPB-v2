@@ -57,6 +57,13 @@ local function is_area(tags)
     return false
 end
 
+-- osm2pgsql 1.x only sends tagged ways through process_way in stage 1.
+-- Mark every relation-member way for stage 2 so untagged multipolygon,
+-- boundary, and route linework is retained in raw staging as well.
+function osm2pgsql.select_relation_members(relation)
+    return { ways = osm2pgsql.way_member_ids(relation) }
+end
+
 function osm2pgsql.process_node(object)
     if next(object.tags) == nil then
         return
