@@ -168,9 +168,7 @@ def test_osm_identity_jsonb_duplicate_prevention_and_relation_members() -> None:
             ("node", "stop"),
             ("way", ""),
         ]
-        assert [
-            (row.member_kind, row.is_resolved) for row in normalized_members
-        ] == [
+        assert [(row.member_kind, row.is_resolved) for row in normalized_members] == [
             ("stop_position", True),
             ("path", False),
         ]
@@ -207,9 +205,7 @@ def test_route_geometry_excludes_platform_way_and_keeps_ordered_members() -> Non
     try:
         with engine.begin() as connection:
             connection.execute(text("DROP TABLE IF EXISTS staging._osm_relations"))
-            connection.execute(
-                text("DROP TABLE IF EXISTS derived._osm_relation_geometries")
-            )
+            connection.execute(text("DROP TABLE IF EXISTS derived._osm_relation_geometries"))
             connection.execute(
                 text(
                     "CREATE TABLE staging._osm_relations "
@@ -325,13 +321,9 @@ def test_route_geometry_excludes_platform_way_and_keeps_ordered_members() -> Non
     finally:
         with engine.begin() as connection:
             connection.execute(text("DROP TABLE IF EXISTS staging._osm_relations"))
+            connection.execute(text("DROP TABLE IF EXISTS derived._osm_relation_geometries"))
             connection.execute(
-                text("DROP TABLE IF EXISTS derived._osm_relation_geometries")
-            )
-            connection.execute(
-                text(
-                    "DELETE FROM derived.osm_relation_geometries WHERE source_id = :id"
-                ),
+                text("DELETE FROM derived.osm_relation_geometries WHERE source_id = :id"),
                 {"id": source_id},
             )
             connection.execute(

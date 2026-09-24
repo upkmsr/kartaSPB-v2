@@ -1,3 +1,5 @@
+# ruff: noqa: E501
+import json
 import os
 from uuid import uuid4
 
@@ -6,6 +8,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError
 
 from app.data.catalog import canonicalize_osm_objects
+from app.data.categories import apply_categories, bulk_create_osm_objects
 
 
 def database_url() -> str:
@@ -52,17 +55,27 @@ def create_successful_run(engine: Engine, source_id: int) -> int:
 
 def cleanup_source(engine: Engine, source_id: int) -> None:
     with engine.begin() as connection:
-        object_ids = connection.execute(
-            text(
-                "SELECT object_id FROM catalog.object_sources WHERE source_id = :source_id"
-            ),
-            {"source_id": source_id},
-        ).scalars().all()
+        object_ids = (
+            connection.execute(
+                text("SELECT object_id FROM catalog.object_sources WHERE source_id = :source_id"),
+                {"source_id": source_id},
+            )
+            .scalars()
+            .all()
+        )
         connection.execute(
             text(
                 "DELETE FROM catalog.relationships "
                 "WHERE subject_id = ANY(:ids) OR object_id = ANY(:ids)"
             ),
+            {"ids": object_ids},
+        )
+        connection.execute(
+            text("DELETE FROM catalog.object_category_sources WHERE object_id = ANY(:ids)"),
+            {"ids": object_ids},
+        )
+        connection.execute(
+            text("DELETE FROM catalog.object_categories WHERE object_id = ANY(:ids)"),
             {"ids": object_ids},
         )
         connection.execute(
@@ -94,6 +107,88 @@ def cleanup_source(engine: Engine, source_id: int) -> None:
             text("DELETE FROM meta.dataset_sources WHERE id = :source_id"),
             {"source_id": source_id},
         )
+
+
+@pytest.mark.integration
+def test_category_provenance_reclassification_and_partial_scope() -> None:
+    engine = create_engine(database_url())
+    source_id = create_source(engine)
+    run_id = create_successful_run(engine, source_id)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO staging.osm_nodes
+                      (source_id,osm_id,tags,geom,import_run_id,imported_at)
+                    VALUES
+                      (:source_id,2001,'{"amenity":"pharmacy"}'::jsonb,
+                       ST_Point(30,60,4326),:run_id,now()),
+                      (:source_id,2002,'{"amenity":"pharmacy","highway":"bus_stop"}'::jsonb,
+                       ST_Point(30.1,60.1,4326),:run_id,now())
+                """),
+                {"source_id": source_id, "run_id": run_id},
+            )
+        assert bulk_create_osm_objects(
+            source_id, run_id, [("node", 2001), ("node", 2002)], engine=engine
+        ) == 2
+        processed, matches = apply_categories(source_id, run_id, engine=engine)
+        assert (processed, matches) == (2, 3)
+        with engine.connect() as connection:
+            bindings = dict(
+                connection.execute(
+                    text(
+                        "SELECT source_object_id,id FROM catalog.object_sources WHERE source_id=:source_id"
+                    ),
+                    {"source_id": source_id},
+                ).all()
+            )
+            stable_object_id = connection.scalar(
+                text("SELECT object_id FROM catalog.object_sources WHERE id=:id"),
+                {"id": bindings["2001"]},
+            )
+            before = int(
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM catalog.object_category_sources WHERE status='active' AND object_source_id=:id"
+                    ),
+                    {"id": bindings["2002"]},
+                )
+                or 0
+            )
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE staging.osm_nodes SET tags=CAST(:tags AS jsonb) "
+                    "WHERE source_id=:source_id AND osm_id=2001"
+                ),
+                {"source_id": source_id, "tags": json.dumps({"amenity": "cafe"})},
+            )
+        apply_categories(source_id, run_id, engine=engine, binding_ids=[bindings["2001"]])
+        with engine.connect() as connection:
+            removed = connection.scalar(
+                text(
+                    "SELECT status FROM catalog.object_category_sources WHERE object_source_id=:id AND category_key='healthcare.pharmacy'"
+                ),
+                {"id": bindings["2001"]},
+            )
+            preserved = int(
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM catalog.object_category_sources WHERE status='active' AND object_source_id=:id"
+                    ),
+                    {"id": bindings["2002"]},
+                )
+                or 0
+            )
+            current_object_id = connection.scalar(
+                text("SELECT object_id FROM catalog.object_sources WHERE id=:id"),
+                {"id": bindings["2001"]},
+            )
+        assert removed == "inactive"
+        assert preserved == before
+        assert current_object_id == stable_object_id
+    finally:
+        cleanup_source(engine, source_id)
 
 
 @pytest.mark.integration
@@ -234,14 +329,18 @@ def test_canonical_identity_lifecycle_geometry_and_route_exclusion() -> None:
                 ),
                 {"source_id": source_id},
             ).all()
-            revisions = connection.execute(
-                text(
-                    "SELECT revision FROM catalog.objects "
-                    "WHERE id IN (SELECT object_id FROM catalog.object_sources "
-                    "             WHERE source_id = :source_id)"
-                ),
-                {"source_id": source_id},
-            ).scalars().all()
+            revisions = (
+                connection.execute(
+                    text(
+                        "SELECT revision FROM catalog.objects "
+                        "WHERE id IN (SELECT object_id FROM catalog.object_sources "
+                        "             WHERE source_id = :source_id)"
+                    ),
+                    {"source_id": source_id},
+                )
+                .scalars()
+                .all()
+            )
         assert {
             (row.source_object_type, row.source_object_id): row.object_id for row in repeated
         } == stable_ids
@@ -263,9 +362,7 @@ def test_canonical_identity_lifecycle_geometry_and_route_exclusion() -> None:
                 ),
                 {"source_id": source_id, "run_id": third_run},
             )
-        changed = canonicalize_osm_objects(
-            source_id, third_run, [("node", 1001)], engine=engine
-        )
+        changed = canonicalize_osm_objects(source_id, third_run, [("node", 1001)], engine=engine)
         assert changed.changed == 1
         with engine.connect() as connection:
             point = connection.execute(
