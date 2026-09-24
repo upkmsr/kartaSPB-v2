@@ -66,11 +66,32 @@ OpenStreetMap or an official registry.
 
 ## Components
 
-- **Frontend:** React, TypeScript, Vite, and MapLibre GL JS. FOUNDATION 0 contains a desktop shell and a map workspace placeholder only.
+- **Frontend:** React, TypeScript, Vite, and MapLibre GL JS. The desktop map consumes bounded canonical GeoJSON from the generic map API; source-specific data never reaches UI components.
 - **Backend:** FastAPI exposes transport concerns. Domain code owns application meaning. The data package will own adapters, imports, and normalisation.
 - **Database:** PostgreSQL/PostGIS holds the canonical spatial system of record. Alembic exclusively manages schema changes.
 - **OSM data engine:** a dedicated Docker service combines pinned Osmium and osm2pgsql versions with Python orchestration. Osmium validates and extracts; osm2pgsql Flex translates OSM primitives without category filtering and assembles mature multipolygon/boundary geometry.
 - **Infrastructure:** Docker Compose makes database initialisation, migrations, API startup, frontend, and data tooling deterministic.
+
+## Real map
+
+FOUNDATION 4B keeps one `catalog-features` GeoJSON source for the current viewport.
+A central layer registry maps the ten public category keys to ordered MapLibre
+render layers, visibility defaults, interaction rules, and minimum zooms. A
+logical category can render points, polygons, and outlines without additional
+HTTP requests.
+
+Viewport loading runs after `moveend` with a 200 ms debounce. The client checks
+the API bbox limits before sending a request, aborts superseded work, and uses a
+monotonic sequence guard against late responses. Feature-limit and network
+errors retain the last complete source; a successful empty result deliberately
+clears it. Object selection loads compact canonical details by UUID and never
+reads raw OSM payloads.
+
+The default style is a local, token-free dark MapLibre style so catalog overlays
+remain usable without a basemap provider. `VITE_MAP_STYLE_URL` can select an
+external MapLibre-compatible style; attribution remains the responsibility of
+that style's source definitions, and an initial style failure falls back to the
+local dark style.
 
 ## Dependency direction
 
