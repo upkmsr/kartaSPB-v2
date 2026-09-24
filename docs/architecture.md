@@ -85,3 +85,9 @@ transport categories.
 Category extraction, exact administrative clipping, basemap layers, routing,
 and scoring remain deferred. Transport routes retain their ordered semantics in
 `derived` and are deliberately excluded from generic `catalog.objects`.
+# Category boundary
+
+FOUNDATION 3B classifies canonical objects through declarative taxonomy and
+source-specific rules. Taxonomy, matching, and provenance are centralized; adding a
+category does not add an importer. API, map, UI, GTFS, and cross-provider merge policy
+remain outside this foundation.

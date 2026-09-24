@@ -13,7 +13,8 @@ The long-term PostGIS layout is divided into schemas with explicit responsibilit
 | `analytics` | Grids, computed features, and scoring outputs |
 
 FOUNDATION 1 uses `meta` and `staging`. FOUNDATION 2 adds `derived`; FOUNDATION
-3A adds `catalog`. The domain schema and application categories remain empty.
+3A adds the canonical `catalog` core; 3B adds catalog category assignments and
+their source/rule provenance. The domain schema remains empty.
 
 ## Source registry
 
@@ -101,4 +102,27 @@ provenance boundary for other canonical values.
 Alembic is the sole production schema-management mechanism. Revision
 `20260922_0002` creates OSM staging; revision `20260923_0003` creates the
 derived relation-geometry layer; revision `20260924_0004` creates the canonical
-GIS core. Runtime application code never calls `create_all()`.
+GIS core; revision `20260924_0005` creates category persistence. Runtime
+application code never calls `create_all()`.
+# Category Engine (FOUNDATION 3B)
+
+The canonical catalog remains provider-independent. Category definitions live in
+`config/categories/taxonomy.json`; OSM mappings live separately in
+`config/categories/sources/osm.json`. Rules use a deliberately small DSL
+(`equals`, `in`, `exists`, `not_equals`, `not_in`) plus source-object, geometry-family,
+and canonical-kind constraints. There is no executable expression support.
+
+The full flow is `source -> staging -> derived -> canonical catalog -> category engine
+-> API/domain`. The category engine never creates canonical objects. A batch orchestrator
+may discover candidates from the same rules and pass their identities to the existing
+canonicalization service before classification.
+
+`catalog.object_categories` is the effective many-to-many classification.
+`catalog.object_category_sources` records each supporting source binding, stable rule
+ID/version, matched tag values, and observation runs. Reconciliation is limited to
+bindings processed in the current scope; absence from a partial import never removes
+evidence belonging to an unobserved binding. Routes and route masters remain transport
+semantics and are not generic catalog places.
+
+Raw OSM tags stay in staging. Canonical identity uses exact source identity without fuzzy
+merge, and category evidence stores only matched fields plus stable rule identity/version.
