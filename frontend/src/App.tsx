@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
 import { fetchReadiness } from "./api/health";
+import { LayerControl } from "./components/LayerControl";
 import { MapWorkspace } from "./components/MapWorkspace";
 import { StatusIndicator } from "./components/StatusIndicator";
+import { defaultVisibleLayerIds } from "./map/layerRegistry";
 
 type ConnectionState = "checking" | "ready" | "offline";
+const INITIAL_ZOOM = 12;
 
 export function App() {
   const [backend, setBackend] = useState<ConnectionState>("checking");
   const [postgis, setPostgis] = useState<ConnectionState>("checking");
+  const [zoom, setZoom] = useState(INITIAL_ZOOM);
+  const [visibleLayerIds, setVisibleLayerIds] = useState(defaultVisibleLayerIds);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -25,6 +30,15 @@ export function App() {
     return () => controller.abort();
   }, []);
 
+  const toggleLayer = (layerId: string) => {
+    setVisibleLayerIds((current) => {
+      const next = new Set(current);
+      if (next.has(layerId)) next.delete(layerId);
+      else next.add(layerId);
+      return next;
+    });
+  };
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -40,7 +54,7 @@ export function App() {
         <div className="topbar-meta">
           <span>59°57′ N</span>
           <span>30°19′ E</span>
-          <span className="version">FOUNDATION 0</span>
+          <span className="version">FOUNDATION 4</span>
         </div>
       </header>
 
@@ -70,13 +84,19 @@ export function App() {
             </button>
           </section>
 
+          <LayerControl
+            visibleLayerIds={visibleLayerIds}
+            zoom={zoom}
+            onToggle={toggleLayer}
+          />
+
           <div className="sidebar-note">
-            <span>01</span>
-            <p>Архитектурный фундамент готов к подключению открытых GIS-данных.</p>
+            <span>04</span>
+            <p>Объекты загружаются из canonical catalog для текущего окна карты.</p>
           </div>
         </aside>
 
-        <MapWorkspace />
+        <MapWorkspace visibleLayerIds={visibleLayerIds} onZoomChange={setZoom} />
       </div>
 
       <div className="viewport-warning" role="alert">

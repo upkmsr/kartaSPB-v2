@@ -5,7 +5,9 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 ARG VITE_API_BASE_URL=
+ARG VITE_MAP_STYLE_URL=
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_MAP_STYLE_URL=$VITE_MAP_STYLE_URL
 RUN npm run build
 
 FROM nginx:1.29-alpine AS runtime
