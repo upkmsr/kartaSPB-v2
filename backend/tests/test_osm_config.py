@@ -41,3 +41,11 @@ def test_flex_marks_untagged_relation_member_ways_for_stage_two() -> None:
 
     assert "function osm2pgsql.select_relation_members(relation)" in flex
     assert "osm2pgsql.way_member_ids(relation)" in flex
+
+
+def test_flex_uses_osm2pgsql_area_assembler_for_relation_geometry() -> None:
+    flex = (project_root() / "config/osm/flex.lua").read_text(encoding="utf-8")
+
+    assert "object:as_multipolygon()" in flex
+    assert "schema = 'derived'" in flex
+    assert "object:as_multilinestring()" not in flex

@@ -1,4 +1,4 @@
-from app.db.models import DatasetSource, ImportRun, ImportRunStatus
+from app.db.models import DatasetSource, ImportRun, ImportRunStatus, OsmRelationGeometry
 
 
 def test_dataset_source_model_uses_meta_schema() -> None:
@@ -24,4 +24,18 @@ def test_import_run_model_tracks_import_outcome() -> None:
         ImportRunStatus.RUNNING,
         ImportRunStatus.SUCCESS,
         ImportRunStatus.FAILED,
+    }
+
+
+def test_relation_geometry_model_uses_derived_schema() -> None:
+    assert OsmRelationGeometry.__table__.schema == "derived"
+    assert {column.name for column in OsmRelationGeometry.__table__.columns} >= {
+        "source_id",
+        "relation_id",
+        "relation_type",
+        "geometry_kind",
+        "assembly_method",
+        "assembly_status",
+        "diagnostics",
+        "geom",
     }
