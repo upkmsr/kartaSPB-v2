@@ -2,6 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 
+vi.mock("./map/MapView", () => ({
+  MapView: () => <div aria-label="Карта Санкт-Петербурга" />,
+}));
+
 describe("App", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -25,7 +29,8 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "KARTASPB" })).toBeInTheDocument();
     expect(screen.getByLabelText("Панель инструментов")).toBeInTheDocument();
     expect(screen.getByLabelText("Рабочая область карты")).toBeInTheDocument();
-    expect(screen.getByText("Пространственные данные появятся здесь")).toBeInTheDocument();
+    expect(screen.getByLabelText("Карта Санкт-Петербурга")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /Дороги/ })).toBeChecked();
     await waitFor(() => expect(screen.getAllByText("READY")).toHaveLength(2));
   });
 
