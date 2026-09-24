@@ -12,8 +12,8 @@ The long-term PostGIS layout is divided into schemas with explicit responsibilit
 | `user` | User-owned places, preferences, and saved analyses |
 | `analytics` | Grids, computed features, and scoring outputs |
 
-FOUNDATION 1 uses `meta` and `staging`. FOUNDATION 2 adds `derived`; canonical and
-domain schemas remain intentionally empty.
+FOUNDATION 1 uses `meta` and `staging`. FOUNDATION 2 adds `derived`; FOUNDATION
+3A adds `catalog`. The domain schema and application categories remain empty.
 
 ## Source registry
 
@@ -62,12 +62,43 @@ sequence, role, identity, tags, and geometry. `derived.osm_route_variants`
 resolves `route_master` membership when such superrelations are present in the
 extract.
 
-No school, pharmacy, park, road, or transport application object is created in
-this layer. Those meanings belong to the future canonical catalogue.
+No school, pharmacy, park, road, or transport application category is created
+in this layer. Those meanings belong to FOUNDATION 3B.
+
+## Canonical GIS core
+
+`catalog.objects` owns stable, provider-independent UUIDs, canonical geometry,
+name, lifecycle, revision, and field provenance. `catalog.object_sources`
+binds each external identity to exactly one canonical UUID through the unique
+key `(source_id, source_object_type, source_object_id)`. Candidate geometry and
+name remain attributable to that binding; raw provider payloads stay in
+`staging`.
+
+Canonicalization is explicit and conservative:
+
+- valid non-empty nodes and ways become generic `feature` objects;
+- only `assembled` multipolygon and boundary relations are eligible;
+- administrative boundaries use canonical kind `boundary`;
+- routes and route masters never become generic catalog features;
+- a new source identity creates a new UUID, with no name, distance, or overlap
+  matching;
+- unchanged payloads update observation provenance but not canonical revision;
+- bbox absence never deletes or retires an object.
+
+`catalog.relationships` stores directed, unordered relationships with source
+provenance. It is not a transport member table. Ordered route members and route
+variants remain in `derived.osm_route_members` and
+`derived.osm_route_variants`.
+
+Geometry selection is deterministic rather than last-write-wins: an explicit
+lock wins, followed by source priority, geometry quality, latest successful
+observation, and stable binding ID. The winning binding is recorded in
+`geometry_source_id`; `name_source_id` and `property_sources` provide the same
+provenance boundary for other canonical values.
 
 ## Schema management
 
 Alembic is the sole production schema-management mechanism. Revision
 `20260922_0002` creates OSM staging; revision `20260923_0003` creates the
-derived relation-geometry layer. Runtime application code never calls
-`create_all()`.
+derived relation-geometry layer; revision `20260924_0004` creates the canonical
+GIS core. Runtime application code never calls `create_all()`.

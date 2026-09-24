@@ -22,12 +22,16 @@ nodes / ways / relations
 FOUNDATION 2 — correct GIS interpretation
 multipolygons / holes / boundaries / routes / ordered members
         ↓
-FOUNDATION 3 — application meaning
+FOUNDATION 3A — provider-independent canonical GIS identity
+objects / source bindings / relationships / provenance
+        ↓
+FOUNDATION 3B — application meaning
 school / pharmacy / park / road / transport / ...
 ```
 
-FOUNDATION 2 must not assign application categories. It only turns the OSM
-relation model into queryable, validated GIS structures.
+FOUNDATION 2 and 3A do not assign application categories. FOUNDATION 2 turns
+the OSM relation model into validated GIS structures; FOUNDATION 3A gives
+eligible features stable provider-independent identity and provenance.
 
 ```text
 External open data
@@ -44,6 +48,8 @@ Derived OSM geometry and ordered relations
         ↓
 Canonical GIS model
         ↓
+FOUNDATION 3B categories
+        ↓
 PostGIS
         ↓
 Domain logic
@@ -53,7 +59,10 @@ API
 Desktop frontend / map / analytics
 ```
 
-The source-to-canonical boundary is the central architectural rule. The frontend and domain logic consume canonical objects; they must not need to know whether a school, park, road, or medical facility came from OpenStreetMap or an official registry.
+The source-to-canonical boundary is the central architectural rule. The
+frontend and domain logic consume canonical objects; they must not need to know
+whether a future school, park, road, or medical category came from
+OpenStreetMap or an official registry.
 
 ## Components
 
@@ -65,11 +74,14 @@ The source-to-canonical boundary is the central architectural rule. The frontend
 
 ## Dependency direction
 
-Source-specific concepts stop at the data layer. Domain logic may depend on canonical models, and API handlers may depend on domain services. The reverse dependencies are not allowed. The OSM importer writes `staging`, `derived`, `meta.dataset_sources`, and `meta.import_runs`; it does not create school, pharmacy, park, or transport domain tables.
+Source-specific concepts stop at the data layer. Domain logic may depend on
+canonical models, and API handlers may depend on domain services. The reverse
+dependencies are not allowed. Canonicalization reads `staging` and `derived`
+and writes `catalog`; it does not create school, pharmacy, park, road, or
+transport categories.
 
 ## Deferred work
 
-Category extraction, a canonical catalogue, exact administrative clipping,
-basemap layers, routing, and scoring remain deferred. FOUNDATION 2 stops at
-correct OSM GIS interpretation: multipolygon holes, boundaries, route geometry,
-ordered members, explicit assembly status, and diagnostics.
+Category extraction, exact administrative clipping, basemap layers, routing,
+and scoring remain deferred. Transport routes retain their ordered semantics in
+`derived` and are deliberately excluded from generic `catalog.objects`.
