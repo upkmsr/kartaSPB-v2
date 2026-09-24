@@ -48,9 +48,7 @@ def check_readiness() -> ReadinessReport:
             else:
                 migrations = ComponentStatus(
                     status="outdated",
-                    detail=(
-                        f"database={sorted(current_heads)} expected={sorted(expected_heads)}"
-                    ),
+                    detail=(f"database={sorted(current_heads)} expected={sorted(expected_heads)}"),
                 )
     except (SQLAlchemyError, OSError) as exc:
         return ReadinessReport(

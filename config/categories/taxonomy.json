@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "categories": [
+    {"key": "education.school", "label": "School"},
+    {"key": "education.kindergarten", "label": "Kindergarten"},
+    {"key": "healthcare.pharmacy", "label": "Pharmacy"},
+    {"key": "healthcare.hospital", "label": "Hospital"},
+    {"key": "healthcare.clinic", "label": "Clinic"},
+    {"key": "nature.park", "label": "Park"},
+    {"key": "nature.water", "label": "Water"},
+    {"key": "transport.stop", "label": "Transport stop"},
+    {"key": "transport.road", "label": "Road"},
+    {"key": "boundary.administrative", "label": "Administrative boundary"}
+  ]
+}

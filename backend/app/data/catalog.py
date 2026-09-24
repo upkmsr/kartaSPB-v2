@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 import hashlib
 import json
 from dataclasses import dataclass
@@ -52,9 +53,7 @@ def _payload_hash(
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _load_candidates(
-    connection: Any, source_id: int, identities_json: str
-) -> list[_Candidate]:
+def _load_candidates(connection: Any, source_id: int, identities_json: str) -> list[_Candidate]:
     rows = connection.execute(
         text(
             """
@@ -212,8 +211,7 @@ def canonicalize_osm_objects(
             {"source_id": source_id, "identities": candidate_keys_json},
         ).all()
         existing = {
-            (str(row.source_object_type), str(row.source_object_id)): row
-            for row in existing_rows
+            (str(row.source_object_type), str(row.source_object_id)): row for row in existing_rows
         }
 
         new_candidates = [
@@ -226,30 +224,41 @@ def canonicalize_osm_objects(
             for candidate in new_candidates
         }
         if new_candidates:
+            new_payload = json.dumps(
+                [
+                    {
+                        "id": str(
+                            new_object_ids[
+                                (candidate.source_object_type, candidate.source_object_id)
+                            ]
+                        ),
+                        "source_object_type": candidate.source_object_type,
+                        "source_object_id": candidate.source_object_id,
+                        "object_kind": candidate.object_kind,
+                        "name": candidate.name,
+                        "geom_hex": candidate.geom_wkb.hex(),
+                        "properties": candidate.properties,
+                        "payload_hash": candidate.payload_hash,
+                        "geometry_quality": candidate.geometry_quality,
+                    }
+                    for candidate in new_candidates
+                ]
+            )
             connection.execute(
                 text(
                     """
                     INSERT INTO catalog.objects
                         (id, object_kind, lifecycle_status, name, geom, properties,
                          property_sources, revision, created_at, updated_at)
-                    VALUES
-                        (:id, :object_kind, 'active', :name,
-                         ST_GeomFromEWKB(:geom_wkb), CAST(:properties AS jsonb),
-                         '{}'::jsonb, 1, now(), now())
+                    SELECT item.id::uuid, item.object_kind, 'active', item.name,
+                           ST_GeomFromEWKB(decode(item.geom_hex, 'hex')),
+                           item.properties, '{}'::jsonb, 1, now(), now()
+                    FROM jsonb_to_recordset(CAST(:payload AS jsonb)) AS item(
+                        id text, object_kind text, name text, geom_hex text,
+                        properties jsonb)
                     """
                 ),
-                [
-                    {
-                        "id": new_object_ids[
-                            (candidate.source_object_type, candidate.source_object_id)
-                        ],
-                        "object_kind": candidate.object_kind,
-                        "name": candidate.name,
-                        "geom_wkb": candidate.geom_wkb,
-                        "properties": json.dumps(candidate.properties),
-                    }
-                    for candidate in new_candidates
-                ],
+                {"payload": new_payload},
             )
             connection.execute(
                 text(
@@ -261,32 +270,19 @@ def canonicalize_osm_objects(
                          geometry_quality, source_priority, match_method, match_confidence,
                          first_seen_import_run_id, last_seen_import_run_id,
                          last_changed_import_run_id, created_at, updated_at)
-                    VALUES
-                        (:object_id, :source_id, :source_object_type, :source_object_id,
-                         :source_native_version, 'present', :candidate_name,
-                         ST_GeomFromEWKB(:geom_wkb), CAST(:candidate_properties AS jsonb),
-                         :payload_hash, :geometry_quality, 0, 'source_identity', 1.000,
-                         :run_id, :run_id, :run_id, now(), now())
+                    SELECT item.id::uuid, :source_id, item.source_object_type,
+                           item.source_object_id, :source_native_version, 'present', item.name,
+                           ST_GeomFromEWKB(decode(item.geom_hex, 'hex')), item.properties,
+                           item.payload_hash, item.geometry_quality, 0, 'source_identity', 1.000,
+                           :run_id, :run_id, :run_id, now(), now()
+                    FROM jsonb_to_recordset(CAST(:payload AS jsonb)) AS item(
+                        id text, source_object_type text, source_object_id text,
+                        name text, geom_hex text, properties jsonb,
+                        payload_hash text, geometry_quality text)
                     """
                 ),
-                [
-                    {
-                        "object_id": new_object_ids[
-                            (candidate.source_object_type, candidate.source_object_id)
-                        ],
-                        "source_id": source_id,
-                        "source_object_type": candidate.source_object_type,
-                        "source_object_id": candidate.source_object_id,
-                        "source_native_version": source_version,
-                        "candidate_name": candidate.name,
-                        "geom_wkb": candidate.geom_wkb,
-                        "candidate_properties": json.dumps(candidate.properties),
-                        "payload_hash": candidate.payload_hash,
-                        "geometry_quality": candidate.geometry_quality,
-                        "run_id": import_run_id,
-                    }
-                    for candidate in new_candidates
-                ],
+                {"payload": new_payload, "source_id": source_id,
+                 "source_native_version": source_version, "run_id": import_run_id},
             )
 
         changed_candidates = [
@@ -338,28 +334,27 @@ def canonicalize_osm_objects(
                 ],
             )
         if unchanged_candidates:
+            unchanged_payload = json.dumps(
+                [{"source_object_type": item.source_object_type,
+                  "source_object_id": item.source_object_id}
+                 for item in unchanged_candidates]
+            )
             connection.execute(
                 text(
                     """
-                    UPDATE catalog.object_sources
+                    UPDATE catalog.object_sources AS binding
                     SET source_native_version = :source_native_version,
                         source_status = 'present', last_seen_import_run_id = :run_id,
                         missing_since = NULL, updated_at = now()
-                    WHERE source_id = :source_id
-                      AND source_object_type = :source_object_type
-                      AND source_object_id = :source_object_id
+                    FROM jsonb_to_recordset(CAST(:payload AS jsonb))
+                         AS item(source_object_type text, source_object_id text)
+                    WHERE binding.source_id = :source_id
+                      AND binding.source_object_type = item.source_object_type
+                      AND binding.source_object_id = item.source_object_id
                     """
                 ),
-                [
-                    {
-                        "source_native_version": source_version,
-                        "run_id": import_run_id,
-                        "source_id": source_id,
-                        "source_object_type": candidate.source_object_type,
-                        "source_object_id": candidate.source_object_id,
-                    }
-                    for candidate in unchanged_candidates
-                ],
+                {"source_native_version": source_version, "run_id": import_run_id,
+                 "source_id": source_id, "payload": unchanged_payload},
             )
 
         all_binding_rows = connection.execute(

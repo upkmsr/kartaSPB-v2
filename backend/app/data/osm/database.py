@@ -9,9 +9,10 @@ from app.data.osm.config import SourceConfig
 
 
 def ensure_source(connection: Connection, source: SourceConfig) -> Mapping[str, Any]:
-    row = connection.execute(
-        text(
-            """
+    row = (
+        connection.execute(
+            text(
+                """
             INSERT INTO meta.dataset_sources
                 (name, provider, source_type, source_url, license, attribution)
             VALUES
@@ -25,16 +26,19 @@ def ensure_source(connection: Connection, source: SourceConfig) -> Mapping[str, 
                 updated_at = now()
             RETURNING *
             """
-        ),
-        {
-            "name": source.name,
-            "provider": source.provider,
-            "source_type": source.source_type,
-            "source_url": source.source_url,
-            "license": source.license,
-            "attribution": source.attribution,
-        },
-    ).mappings().one()
+            ),
+            {
+                "name": source.name,
+                "provider": source.provider,
+                "source_type": source.source_type,
+                "source_url": source.source_url,
+                "license": source.license,
+                "attribution": source.attribution,
+            },
+        )
+        .mappings()
+        .one()
+    )
     return dict(row)
 
 

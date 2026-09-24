@@ -1,4 +1,11 @@
-from app.db.models.catalog import CatalogObject, CatalogRelationship, ObjectSource
+from app.db.models.catalog import (
+    CatalogObject,
+    CatalogRelationship,
+    Category,
+    ObjectCategory,
+    ObjectCategorySource,
+    ObjectSource,
+)
 from app.db.models.import_run import ImportRun, ImportRunStatus
 from app.db.models.osm import (
     OsmNode,
@@ -13,6 +20,7 @@ __all__ = [
     "DatasetSource",
     "CatalogObject",
     "CatalogRelationship",
+    "Category",
     "ImportRun",
     "ImportRunStatus",
     "OsmNode",
@@ -21,4 +29,6 @@ __all__ = [
     "OsmRelationMember",
     "OsmWay",
     "ObjectSource",
+    "ObjectCategory",
+    "ObjectCategorySource",
 ]

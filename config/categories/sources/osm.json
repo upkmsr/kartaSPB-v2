@@ -1,0 +1,21 @@
+{
+  "source": "osm",
+  "version": "1",
+  "rules": [
+    {"id":"osm.school.amenity","version":"1","category":"education.school","geometry_families":["point","polygon"],"conditions":[{"tag":"amenity","operator":"equals","value":"school"}]},
+    {"id":"osm.kindergarten.amenity","version":"1","category":"education.kindergarten","geometry_families":["point","polygon"],"conditions":[{"tag":"amenity","operator":"equals","value":"kindergarten"}]},
+    {"id":"osm.pharmacy.amenity","version":"1","category":"healthcare.pharmacy","geometry_families":["point","polygon"],"conditions":[{"tag":"amenity","operator":"equals","value":"pharmacy"}]},
+    {"id":"osm.pharmacy.healthcare","version":"1","category":"healthcare.pharmacy","geometry_families":["point","polygon"],"conditions":[{"tag":"healthcare","operator":"equals","value":"pharmacy"}]},
+    {"id":"osm.hospital.amenity","version":"1","category":"healthcare.hospital","geometry_families":["point","polygon"],"conditions":[{"tag":"amenity","operator":"equals","value":"hospital"}]},
+    {"id":"osm.hospital.healthcare","version":"1","category":"healthcare.hospital","geometry_families":["point","polygon"],"conditions":[{"tag":"healthcare","operator":"equals","value":"hospital"}]},
+    {"id":"osm.clinic.amenity","version":"1","category":"healthcare.clinic","geometry_families":["point","polygon"],"conditions":[{"tag":"amenity","operator":"equals","value":"clinic"}]},
+    {"id":"osm.clinic.healthcare","version":"1","category":"healthcare.clinic","geometry_families":["point","polygon"],"conditions":[{"tag":"healthcare","operator":"equals","value":"clinic"}]},
+    {"id":"osm.park.leisure","version":"1","category":"nature.park","geometry_families":["polygon"],"conditions":[{"tag":"leisure","operator":"equals","value":"park"}]},
+    {"id":"osm.water.natural","version":"1","category":"nature.water","geometry_families":["polygon"],"conditions":[{"tag":"natural","operator":"equals","value":"water"}]},
+    {"id":"osm.stop.bus","version":"1","category":"transport.stop","source_object_types":["node"],"geometry_families":["point"],"conditions":[{"tag":"highway","operator":"equals","value":"bus_stop"}]},
+    {"id":"osm.stop.position","version":"1","category":"transport.stop","source_object_types":["node"],"geometry_families":["point"],"conditions":[{"tag":"public_transport","operator":"equals","value":"stop_position"}]},
+    {"id":"osm.stop.tram","version":"1","category":"transport.stop","source_object_types":["node"],"geometry_families":["point"],"conditions":[{"tag":"railway","operator":"equals","value":"tram_stop"}]},
+    {"id":"osm.road.highway","version":"1","category":"transport.road","source_object_types":["way"],"geometry_families":["line"],"conditions":[{"tag":"highway","operator":"exists"}]},
+    {"id":"osm.boundary.administrative","version":"1","category":"boundary.administrative","source_object_types":["relation"],"geometry_families":["polygon"],"object_kinds":["boundary"],"conditions":[{"tag":"boundary","operator":"equals","value":"administrative"}]}
+  ]
+}

@@ -1,4 +1,4 @@
-.PHONY: up down migrate backend-test backend-quality frontend-test frontend-quality check osm-download osm-smoke osm-import osm-status osm-inspect
+.PHONY: up down migrate backend-test backend-quality frontend-test frontend-quality check osm-download osm-smoke osm-import osm-status osm-inspect catalog-categories
 
 up:
 	docker compose up --build --wait
@@ -40,3 +40,6 @@ osm-status:
 
 osm-inspect:
 	docker compose run --rm ingest inspect
+
+catalog-categories:
+	docker compose run --rm backend python -m app.data.category_cli run --source-id $(SOURCE_ID) --import-run-id $(RUN_ID)

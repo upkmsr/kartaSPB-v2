@@ -78,9 +78,7 @@ class OsmRelation(Base):
     __tablename__ = "osm_relations"
     __table_args__ = (
         CheckConstraint("osm_type = 'relation'", name="osm_type"),
-        Index(
-            "uq_osm_relations_identity", "osm_type", "osm_id", "source_id", unique=True
-        ),
+        Index("uq_osm_relations_identity", "osm_type", "osm_id", "source_id", unique=True),
         Index("ix_osm_relations_import_run_id", "import_run_id"),
         Index("ix_osm_relations_geom_gist", "geom", postgresql_using="gist"),
         {"schema": "staging"},
@@ -90,9 +88,7 @@ class OsmRelation(Base):
         ForeignKey("meta.dataset_sources.id", ondelete="CASCADE"), primary_key=True
     )
     osm_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    osm_type: Mapped[str] = mapped_column(
-        String(8), default="relation", server_default="relation"
-    )
+    osm_type: Mapped[str] = mapped_column(String(8), default="relation", server_default="relation")
     tags: Mapped[dict[str, Any]] = mapped_column(
         JSON().with_variant(JSONB(), "postgresql"), default=dict
     )
@@ -108,9 +104,7 @@ class OsmRelation(Base):
 class OsmRelationMember(Base):
     __tablename__ = "osm_relation_members"
     __table_args__ = (
-        CheckConstraint(
-            "member_type IN ('node', 'way', 'relation')", name="member_type"
-        ),
+        CheckConstraint("member_type IN ('node', 'way', 'relation')", name="member_type"),
         ForeignKeyConstraint(
             ["source_id", "relation_id"],
             ["staging.osm_relations.source_id", "staging.osm_relations.osm_id"],

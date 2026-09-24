@@ -52,9 +52,7 @@ def remote_metadata(url: str) -> RemoteMetadata:
         updated_at = parsedate_to_datetime(last_modified) if last_modified else None
         if updated_at and updated_at.tzinfo is None:
             updated_at = updated_at.replace(tzinfo=UTC)
-        version = (
-            updated_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ") if updated_at else None
-        )
+        version = updated_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ") if updated_at else None
         raw_length = response.headers.get("Content-Length")
         return RemoteMetadata(
             updated_at=updated_at,
@@ -90,9 +88,7 @@ def download_source(*, force: bool = False, engine: Engine | None = None) -> Pat
     previous_version = str(row["version"]) if row["version"] else None
     previous_filename = str(row["local_filename"]) if row["local_filename"] else None
     previous_checksum = str(row["checksum"]) if row["checksum"] else None
-    version = metadata.version or previous_version or datetime.now(UTC).strftime(
-        "%Y%m%dT%H%M%SZ"
-    )
+    version = metadata.version or previous_version or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
     if not force and previous_version == version and previous_filename and previous_checksum:
         existing = root / previous_filename
@@ -100,11 +96,7 @@ def download_source(*, force: bool = False, engine: Engine | None = None) -> Pat
             print(f"Source already current: {existing} ({previous_checksum})")
             return existing
 
-    destination = (
-        root
-        / "data/sources/osm"
-        / f"northwestern-fed-district-{version}.osm.pbf"
-    )
+    destination = root / "data/sources/osm" / f"northwestern-fed-district-{version}.osm.pbf"
     expected_md5 = provider_md5(source.checksum_url)
     checksum, size = download_atomic(
         source.source_url,
@@ -134,9 +126,7 @@ def _registered_source(connection: Connection, source: SourceConfig) -> dict[str
     return dict(row)
 
 
-def extract_region(
-    region_name: str, *, force: bool = False, engine: Engine | None = None
-) -> Path:
+def extract_region(region_name: str, *, force: bool = False, engine: Engine | None = None) -> Path:
     root = project_root()
     source_config = load_source(root)
     region = load_region(region_name, root)
@@ -247,9 +237,7 @@ def _changed_count(
     *,
     include_geometry: bool,
 ) -> int:
-    geometry_difference = (
-        "OR target.geom IS DISTINCT FROM work.geom" if include_geometry else ""
-    )
+    geometry_difference = "OR target.geom IS DISTINCT FROM work.geom" if include_geometry else ""
     return int(
         connection.scalar(
             text(
@@ -271,10 +259,7 @@ def _changed_count(
 
 def _merge_work_tables(connection: Connection, source_id: int, run_id: int) -> dict[str, int]:
     connection.execute(
-        text(
-            "DELETE FROM staging.osm_nodes "
-            "WHERE source_id = :source_id AND tags = '{}'::jsonb"
-        ),
+        text("DELETE FROM staging.osm_nodes WHERE source_id = :source_id AND tags = '{}'::jsonb"),
         {"source_id": source_id},
     )
     specs = (
@@ -298,9 +283,7 @@ def _merge_work_tables(connection: Connection, source_id: int, run_id: int) -> d
         )
         geometry_select = "NULL" if object_type == "relation" else "work.geom"
         geometry_difference = (
-            "OR current.geom IS DISTINCT FROM EXCLUDED.geom"
-            if object_type != "relation"
-            else ""
+            "OR current.geom IS DISTINCT FROM EXCLUDED.geom" if object_type != "relation" else ""
         )
         connection.execute(
             text(
@@ -350,9 +333,7 @@ def _merge_work_tables(connection: Connection, source_id: int, run_id: int) -> d
         ),
         {"source_id": source_id, "run_id": run_id},
     )
-    counts["relation_members"] = _work_count(
-        connection, "staging._osm_relation_members"
-    )
+    counts["relation_members"] = _work_count(connection, "staging._osm_relation_members")
     counts["processed"] = counts["nodes"] + counts["ways"] + counts["relations"]
     counts["inserted"] = inserted
     counts["updated"] = updated
@@ -650,10 +631,7 @@ def _merge_relation_geometries(
         ),
         {"run_id": run_id},
     )
-    return {
-        str(row.assembly_status): int(row._mapping["count"])
-        for row in rows
-    }
+    return {str(row.assembly_status): int(row._mapping["count"]) for row in rows}
 
 
 def import_region(region_name: str, *, engine: Engine | None = None) -> dict[str, int]:
@@ -699,9 +677,7 @@ def import_region(region_name: str, *, engine: Engine | None = None) -> dict[str
             counts["area_geometry_candidates"] = _work_count(
                 connection, "derived._osm_relation_geometries"
             )
-            geometry_statuses = _merge_relation_geometries(
-                connection, int(source["id"]), run_id
-            )
+            geometry_statuses = _merge_relation_geometries(connection, int(source["id"]), run_id)
             counts["relation_geometries"] = sum(geometry_statuses.values())
         duration = (datetime.now(UTC) - started).total_seconds()
         finish_import_run(
@@ -742,9 +718,10 @@ def status(engine: Engine | None = None) -> list[dict[str, Any]]:
     source = load_source()
     with database.begin() as connection:
         ensure_source(connection, source)
-        rows = connection.execute(
-            text(
-                """
+        rows = (
+            connection.execute(
+                text(
+                    """
                 SELECT s.id, s.name, s.provider, s.version, s.checksum, s.local_filename,
                        s.source_updated_at, s.downloaded_at,
                        (SELECT count(*) FROM staging.osm_nodes n WHERE n.source_id = s.id) nodes,
@@ -758,9 +735,12 @@ def status(engine: Engine | None = None) -> list[dict[str, Any]]:
                 FROM meta.dataset_sources s
                 WHERE s.name = :name
                 """
-            ),
-            {"name": source.name},
-        ).mappings().all()
+                ),
+                {"name": source.name},
+            )
+            .mappings()
+            .all()
+        )
     result = [dict(row) for row in rows]
     print(json.dumps(result, default=str, indent=2))
     return result
