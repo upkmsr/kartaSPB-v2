@@ -130,3 +130,53 @@ class OsmRelationMember(Base):
     import_run_id: Mapped[int] = mapped_column(
         ForeignKey("meta.import_runs.id", ondelete="RESTRICT")
     )
+
+
+class OsmRelationGeometry(Base):
+    __tablename__ = "osm_relation_geometries"
+    __table_args__ = (
+        CheckConstraint(
+            "relation_type IN ('multipolygon', 'boundary', 'route')",
+            name="relation_type",
+        ),
+        CheckConstraint("geometry_kind IN ('area', 'route')", name="geometry_kind"),
+        CheckConstraint(
+            "assembly_status IN "
+            "('assembled', 'partial', 'incomplete', 'invalid', 'unsupported_nested')",
+            name="assembly_status",
+        ),
+        CheckConstraint(
+            "assembly_status <> 'assembled' OR geom IS NOT NULL",
+            name="assembled_geometry_not_null",
+        ),
+        ForeignKeyConstraint(
+            ["source_id", "relation_id"],
+            ["staging.osm_relations.source_id", "staging.osm_relations.osm_id"],
+            ondelete="CASCADE",
+        ),
+        Index("ix_osm_relation_geometries_geom_gist", "geom", postgresql_using="gist"),
+        Index(
+            "ix_osm_relation_geometries_type_status",
+            "relation_type",
+            "assembly_status",
+        ),
+        Index("ix_osm_relation_geometries_import_run_id", "import_run_id"),
+        {"schema": "derived"},
+    )
+
+    source_id: Mapped[int] = mapped_column(primary_key=True)
+    relation_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    relation_type: Mapped[str] = mapped_column(String(32))
+    geometry_kind: Mapped[str] = mapped_column(String(16))
+    assembly_method: Mapped[str] = mapped_column(String(64))
+    assembly_status: Mapped[str] = mapped_column(String(32))
+    diagnostics: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=dict
+    )
+    geom: Mapped[Any | None] = mapped_column(
+        Geometry("GEOMETRY", srid=4326, spatial_index=False), nullable=True
+    )
+    import_run_id: Mapped[int] = mapped_column(
+        ForeignKey("meta.import_runs.id", ondelete="RESTRICT")
+    )
+    assembled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -15,6 +15,13 @@ local relation_table = osm2pgsql.define_relation_table('_osm_relations', {
     { column = 'tags', type = 'jsonb', not_null = true },
 }, { schema = 'staging' })
 
+-- FOUNDATION 2 work output. Permanent derived tables are Alembic-managed and
+-- populated transactionally by the Python merge after raw staging is current.
+local relation_geometry_table = osm2pgsql.define_relation_table('_osm_relation_geometries', {
+    { column = 'relation_type', type = 'text', not_null = true },
+    { column = 'geom', type = 'geometry', projection = 4326 },
+}, { schema = 'derived' })
+
 local member_table = osm2pgsql.define_table({
     name = '_osm_relation_members',
     schema = 'staging',
@@ -99,6 +106,14 @@ function osm2pgsql.process_relation(object)
             member_type = member_types[member.type],
             member_id = member.ref,
             role = member.role or '',
+        })
+    end
+
+    local relation_type = object.tags.type
+    if relation_type == 'multipolygon' or relation_type == 'boundary' then
+        relation_geometry_table:insert({
+            relation_type = relation_type,
+            geom = object:as_multipolygon(),
         })
     end
 end

@@ -21,6 +21,7 @@ from app.data.osm.files import download_atomic, file_matches_sha256, sha256_file
 from app.db.session import get_engine
 
 WORK_TABLES = (
+    "derived._osm_relation_geometries",
     "staging._osm_relation_members",
     "staging._osm_relations",
     "staging._osm_ways",
@@ -359,6 +360,302 @@ def _merge_work_tables(connection: Connection, source_id: int, run_id: int) -> d
     return counts
 
 
+def _merge_relation_geometries(
+    connection: Connection, source_id: int, run_id: int
+) -> dict[str, int]:
+    """Build source-specific GIS interpretations without changing raw staging."""
+    parameters = {"source_id": source_id, "run_id": run_id}
+    connection.execute(
+        text(
+            """
+            DELETE FROM derived.osm_relation_geometries AS geometry
+            USING staging._osm_relations AS work
+            WHERE geometry.source_id = :source_id
+              AND geometry.relation_id = work.relation_id
+              AND COALESCE(work.tags ->> 'type', '')
+                  NOT IN ('multipolygon', 'boundary', 'route')
+            """
+        ),
+        parameters,
+    )
+    connection.execute(
+        text(
+            """
+            WITH area_rows AS (
+                SELECT
+                    work.relation_id,
+                    work.relation_type,
+                    work.geom,
+                    members.member_count,
+                    members.way_members,
+                    members.missing_way_members,
+                    members.null_way_geometries,
+                    members.nested_relation_members,
+                    members.geometry_relation_members,
+                    members.missing_relation_members
+                FROM derived._osm_relation_geometries AS work
+                CROSS JOIN LATERAL (
+                    SELECT
+                        count(*) AS member_count,
+                        count(*) FILTER (
+                            WHERE member.member_type = 'way'
+                        ) AS way_members,
+                        count(*) FILTER (
+                            WHERE member.member_type = 'way'
+                              AND way.osm_id IS NULL
+                        ) AS missing_way_members,
+                        count(*) FILTER (
+                            WHERE member.member_type = 'way'
+                              AND way.osm_id IS NOT NULL
+                              AND way.geom IS NULL
+                        ) AS null_way_geometries,
+                        count(*) FILTER (
+                            WHERE member.member_type = 'relation'
+                        ) AS nested_relation_members,
+                        count(*) FILTER (
+                            WHERE member.member_type = 'relation'
+                              AND member.role IN ('', 'outer', 'inner')
+                        ) AS geometry_relation_members,
+                        count(*) FILTER (
+                            WHERE member.member_type = 'relation'
+                              AND child.osm_id IS NULL
+                        ) AS missing_relation_members
+                    FROM staging.osm_relation_members AS member
+                    LEFT JOIN staging.osm_ways AS way
+                      ON member.member_type = 'way'
+                     AND way.source_id = member.source_id
+                     AND way.osm_id = member.member_id
+                    LEFT JOIN staging.osm_relations AS child
+                      ON member.member_type = 'relation'
+                     AND child.source_id = member.source_id
+                     AND child.osm_id = member.member_id
+                    WHERE member.source_id = :source_id
+                      AND member.relation_id = work.relation_id
+                ) AS members
+            ), prepared AS (
+                SELECT
+                    :source_id AS source_id,
+                    relation_id,
+                    relation_type,
+                    'area' AS geometry_kind,
+                    'osm2pgsql_as_multipolygon' AS assembly_method,
+                    CASE
+                        WHEN geometry_relation_members > 0 THEN 'unsupported_nested'
+                        WHEN missing_way_members > 0 OR null_way_geometries > 0
+                            THEN CASE WHEN geom IS NULL THEN 'incomplete' ELSE 'partial' END
+                        WHEN geom IS NULL THEN 'invalid'
+                        WHEN NOT ST_IsValid(geom) THEN 'invalid'
+                        ELSE 'assembled'
+                    END AS assembly_status,
+                    jsonb_build_object(
+                        'member_count', member_count,
+                        'way_members', way_members,
+                        'missing_way_members', missing_way_members,
+                        'null_way_geometries', null_way_geometries,
+                        'nested_relation_members', nested_relation_members,
+                        'geometry_relation_members', geometry_relation_members,
+                        'missing_relation_members', missing_relation_members,
+                        'assembler', 'osm2pgsql/libosmium',
+                        'geometry_type', GeometryType(geom),
+                        'is_valid', CASE WHEN geom IS NULL THEN NULL ELSE ST_IsValid(geom) END
+                    ) AS diagnostics,
+                    geom,
+                    :run_id AS import_run_id
+                FROM area_rows
+            )
+            INSERT INTO derived.osm_relation_geometries AS current
+                (source_id, relation_id, relation_type, geometry_kind, assembly_method,
+                 assembly_status, diagnostics, geom, import_run_id, assembled_at)
+            SELECT source_id, relation_id, relation_type, geometry_kind, assembly_method,
+                   assembly_status, diagnostics, geom, import_run_id, now()
+            FROM prepared
+            ON CONFLICT (source_id, relation_id) DO UPDATE SET
+                relation_type = EXCLUDED.relation_type,
+                geometry_kind = EXCLUDED.geometry_kind,
+                assembly_method = EXCLUDED.assembly_method,
+                assembly_status = EXCLUDED.assembly_status,
+                diagnostics = EXCLUDED.diagnostics,
+                geom = EXCLUDED.geom,
+                import_run_id = EXCLUDED.import_run_id,
+                assembled_at = EXCLUDED.assembled_at
+            """
+        ),
+        parameters,
+    )
+    connection.execute(
+        text(
+            """
+            WITH route_rows AS (
+                SELECT
+                    work.relation_id,
+                    members.member_count,
+                    members.path_members,
+                    members.present_path_geometries,
+                    members.missing_path_members,
+                    members.null_path_geometries,
+                    members.stop_members,
+                    members.platform_members,
+                    members.unresolved_stop_members,
+                    members.unresolved_platform_members,
+                    members.nested_relation_members,
+                    CASE
+                        WHEN members.present_path_geometries = 0 THEN NULL
+                        ELSE ST_Multi(
+                            ST_CollectionExtract(
+                                ST_LineMerge(
+                                    ST_UnaryUnion(members.path_collection)
+                                ),
+                                2
+                            )
+                        )
+                    END AS geom
+                FROM staging._osm_relations AS work
+                CROSS JOIN LATERAL (
+                    SELECT
+                        count(*) AS member_count,
+                        count(*) FILTER (
+                            WHERE member.member_type = 'way'
+                              AND member.role NOT LIKE 'platform%'
+                        ) AS path_members,
+                        count(*) FILTER (
+                            WHERE member.member_type = 'way'
+                              AND member.role NOT LIKE 'platform%'
+                              AND way.geom IS NOT NULL
+                        ) AS present_path_geometries,
+                        count(*) FILTER (
+                            WHERE member.member_type = 'way'
+                              AND member.role NOT LIKE 'platform%'
+                              AND way.osm_id IS NULL
+                        ) AS missing_path_members,
+                        count(*) FILTER (
+                            WHERE member.member_type = 'way'
+                              AND member.role NOT LIKE 'platform%'
+                              AND way.osm_id IS NOT NULL
+                              AND way.geom IS NULL
+                        ) AS null_path_geometries,
+                        count(*) FILTER (
+                            WHERE member.role LIKE 'stop%'
+                        ) AS stop_members,
+                        count(*) FILTER (
+                            WHERE member.role LIKE 'platform%'
+                        ) AS platform_members,
+                        count(*) FILTER (
+                            WHERE member.role LIKE 'stop%'
+                              AND node.osm_id IS NULL
+                        ) AS unresolved_stop_members,
+                        count(*) FILTER (
+                            WHERE member.role LIKE 'platform%'
+                              AND CASE member.member_type
+                                  WHEN 'node' THEN node.osm_id
+                                  WHEN 'way' THEN way.osm_id
+                                  WHEN 'relation' THEN child.osm_id
+                              END IS NULL
+                        ) AS unresolved_platform_members,
+                        count(*) FILTER (
+                            WHERE member.member_type = 'relation'
+                        ) AS nested_relation_members,
+                        ST_Collect(
+                            CASE
+                                WHEN member.member_type = 'way'
+                                 AND member.role NOT LIKE 'platform%'
+                                 AND way.geom IS NOT NULL
+                                    THEN CASE
+                                        WHEN GeometryType(way.geom) IN
+                                             ('POLYGON', 'MULTIPOLYGON')
+                                            THEN ST_Boundary(way.geom)
+                                        ELSE way.geom
+                                    END
+                            END
+                            ORDER BY member.sequence
+                        ) AS path_collection
+                    FROM staging.osm_relation_members AS member
+                    LEFT JOIN staging.osm_nodes AS node
+                      ON member.member_type = 'node'
+                     AND node.source_id = member.source_id
+                     AND node.osm_id = member.member_id
+                    LEFT JOIN staging.osm_ways AS way
+                      ON member.member_type = 'way'
+                     AND way.source_id = member.source_id
+                     AND way.osm_id = member.member_id
+                    LEFT JOIN staging.osm_relations AS child
+                      ON member.member_type = 'relation'
+                     AND child.source_id = member.source_id
+                     AND child.osm_id = member.member_id
+                    WHERE member.source_id = :source_id
+                      AND member.relation_id = work.relation_id
+                ) AS members
+                WHERE work.tags ->> 'type' = 'route'
+            ), prepared AS (
+                SELECT
+                    :source_id AS source_id,
+                    relation_id,
+                    'route' AS relation_type,
+                    'route' AS geometry_kind,
+                    'postgis_unary_union_line_merge' AS assembly_method,
+                    CASE
+                        WHEN path_members = 0 THEN 'incomplete'
+                        WHEN missing_path_members > 0 OR null_path_geometries > 0
+                            THEN CASE WHEN geom IS NULL THEN 'incomplete' ELSE 'partial' END
+                        WHEN geom IS NULL OR ST_IsEmpty(geom) THEN 'invalid'
+                        WHEN NOT ST_IsValid(geom) THEN 'invalid'
+                        ELSE 'assembled'
+                    END AS assembly_status,
+                    jsonb_build_object(
+                        'member_count', member_count,
+                        'path_members', path_members,
+                        'present_path_geometries', present_path_geometries,
+                        'missing_path_members', missing_path_members,
+                        'null_path_geometries', null_path_geometries,
+                        'stop_members', stop_members,
+                        'platform_members', platform_members,
+                        'unresolved_stop_members', unresolved_stop_members,
+                        'unresolved_platform_members', unresolved_platform_members,
+                        'nested_relation_members', nested_relation_members,
+                        'assembler', 'PostGIS ST_UnaryUnion + ST_LineMerge',
+                        'member_order', 'preserved in derived.osm_route_members',
+                        'geometry_type', GeometryType(geom),
+                        'is_valid', CASE WHEN geom IS NULL THEN NULL ELSE ST_IsValid(geom) END
+                    ) AS diagnostics,
+                    geom,
+                    :run_id AS import_run_id
+                FROM route_rows
+            )
+            INSERT INTO derived.osm_relation_geometries AS current
+                (source_id, relation_id, relation_type, geometry_kind, assembly_method,
+                 assembly_status, diagnostics, geom, import_run_id, assembled_at)
+            SELECT source_id, relation_id, relation_type, geometry_kind, assembly_method,
+                   assembly_status, diagnostics, geom, import_run_id, now()
+            FROM prepared
+            ON CONFLICT (source_id, relation_id) DO UPDATE SET
+                relation_type = EXCLUDED.relation_type,
+                geometry_kind = EXCLUDED.geometry_kind,
+                assembly_method = EXCLUDED.assembly_method,
+                assembly_status = EXCLUDED.assembly_status,
+                diagnostics = EXCLUDED.diagnostics,
+                geom = EXCLUDED.geom,
+                import_run_id = EXCLUDED.import_run_id,
+                assembled_at = EXCLUDED.assembled_at
+            """
+        ),
+        parameters,
+    )
+    rows = connection.execute(
+        text(
+            """
+            SELECT assembly_status, count(*) AS count
+            FROM derived.osm_relation_geometries
+            WHERE import_run_id = :run_id
+            GROUP BY assembly_status
+            """
+        ),
+        {"run_id": run_id},
+    )
+    return {
+        str(row.assembly_status): int(row._mapping["count"])
+        for row in rows
+    }
+
+
 def import_region(region_name: str, *, engine: Engine | None = None) -> dict[str, int]:
     root = project_root()
     source_config = load_source(root)
@@ -399,6 +696,13 @@ def import_region(region_name: str, *, engine: Engine | None = None) -> dict[str
         )
         with database.begin() as connection:
             counts = _merge_work_tables(connection, int(source["id"]), run_id)
+            counts["area_geometry_candidates"] = _work_count(
+                connection, "derived._osm_relation_geometries"
+            )
+            geometry_statuses = _merge_relation_geometries(
+                connection, int(source["id"]), run_id
+            )
+            counts["relation_geometries"] = sum(geometry_statuses.values())
         duration = (datetime.now(UTC) - started).total_seconds()
         finish_import_run(
             database,
@@ -412,6 +716,7 @@ def import_region(region_name: str, *, engine: Engine | None = None) -> dict[str
                 "extract_checksum": extract_checksum,
                 "duration_seconds": duration,
                 "counts": counts,
+                "geometry_statuses": geometry_statuses,
             },
         )
         print(json.dumps({"run_id": run_id, **counts}, indent=2))
@@ -447,7 +752,9 @@ def status(engine: Engine | None = None) -> list[dict[str, Any]]:
                        (SELECT count(*) FROM staging.osm_relations r
                         WHERE r.source_id = s.id) relations,
                        (SELECT count(*) FROM staging.osm_relation_members m
-                        WHERE m.source_id = s.id) relation_members
+                        WHERE m.source_id = s.id) relation_members,
+                       (SELECT count(*) FROM derived.osm_relation_geometries g
+                        WHERE g.source_id = s.id) relation_geometries
                 FROM meta.dataset_sources s
                 WHERE s.name = :name
                 """
@@ -490,6 +797,17 @@ def inspect(engine: Engine | None = None) -> dict[str, Any]:
         "relation_members": """
             SELECT relation_id, sequence, member_type, member_id, role
             FROM staging.osm_relation_members ORDER BY relation_id, sequence LIMIT 10
+        """,
+        "relation_geometries": """
+            SELECT relation_type, assembly_status, count(*) count
+            FROM derived.osm_relation_geometries
+            GROUP BY relation_type, assembly_status
+            ORDER BY relation_type, assembly_status
+        """,
+        "route_member_kinds": """
+            SELECT member_kind, count(*) count
+            FROM derived.osm_route_members
+            GROUP BY member_kind ORDER BY member_kind
         """,
     }
     result: dict[str, Any] = {}
