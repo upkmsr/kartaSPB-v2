@@ -46,7 +46,36 @@ SELECT * FROM meta.import_runs ORDER BY id DESC LIMIT 10;
 SELECT osm_type, osm_id, tags FROM staging.osm_nodes WHERE tags @> '{"amenity":"school"}' LIMIT 5;
 SELECT relation_id, sequence, member_type, member_id, role
 FROM staging.osm_relation_members ORDER BY relation_id, sequence LIMIT 20;
+
+SELECT relation_type, assembly_status, count(*)
+FROM derived.osm_relation_geometries
+GROUP BY relation_type, assembly_status ORDER BY relation_type, assembly_status;
+
+SELECT relation_id, sequence, member_kind, member_type, member_id, role, is_resolved
+FROM derived.osm_route_members
+ORDER BY relation_id, sequence LIMIT 50;
 ```
+
+Real `spb_smoke` FOUNDATION 2 acceptance IDs include:
+
+| OSM relation | Expected interpretation |
+| --- | --- |
+| `1898904` | Water polygon with 14 holes assembled from split ways |
+| `1920691` | Building MultiPolygon with two components |
+| `1185383` | Valid administrative boundary polygon |
+| `14363086` | Bus route with ordered stops, platforms, and path ways |
+| `1942052` | Tram route |
+| `969924` | Trolleybus route |
+| `252537` | Subway route |
+| `17983655` | Train route |
+
+`route_master` and `route=light_rail` are absent from the current smoke
+extract and must not be reported as synthetic passes. The registered
+Northwestern source PBF does contain Saint Petersburg route masters: relation
+`1735012` (`route_master=trolleybus`, ref `1`) resolves, in source order, to
+route variants `969924` and `969270`. A reference-complete Osmium extract is
+the acceptance path for this source-only case; it is not part of the committed
+dataset.
 
 Handled PBF validation, Osmium, osm2pgsql, and merge errors finish the current import run as `failed`. A database outage is reported directly because no database is available in which to persist telemetry. Source and extract `.part` files are removed on interrupted or failed operations.
 

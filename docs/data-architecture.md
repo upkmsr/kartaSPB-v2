@@ -6,12 +6,14 @@ The long-term PostGIS layout is divided into schemas with explicit responsibilit
 | --- | --- |
 | `meta` | Dataset registry, provenance, versions, and import runs |
 | `staging` | Raw, source-shaped imported records with minimal transformation |
+| `derived` | Source-specific geometry assembly and normalized relation structure |
 | `catalog` | Canonical provider-independent GIS objects |
 | `domain` | Specialised application models derived from canonical objects |
 | `user` | User-owned places, preferences, and saved analyses |
 | `analytics` | Grids, computed features, and scoring outputs |
 
-FOUNDATION 1 uses `meta` and `staging`; canonical and domain schemas remain intentionally empty.
+FOUNDATION 1 uses `meta` and `staging`. FOUNDATION 2 adds `derived`; canonical and
+domain schemas remain intentionally empty.
 
 ## Source registry
 
@@ -40,6 +42,32 @@ Untagged nodes are geometry vertices used internally by osm2pgsql and are not re
 
 The initial import is a full PBF load. Future incremental support can apply Geofabrik `.osc.gz` replication files to an update-capable staging workflow; FOUNDATION 1 does not implement replication.
 
+## OSM derived geometry
+
+`derived.osm_relation_geometries` contains the GIS interpretation of OSM
+relations, never application categories. Its source identity is
+`(source_id, relation_id)` and every row records the relation type, geometry
+kind, assembly method, status, diagnostics, import run, and EPSG:4326 geometry.
+
+- `multipolygon` and `boundary` areas are assembled by osm2pgsql/libosmium.
+- `route` linework is collected from path way members and topologically merged
+  with PostGIS; platform ways are deliberately excluded from the path geometry.
+  Traversal order and duplicates remain available in `osm_route_members`.
+- `assembled`, `partial`, `incomplete`, `invalid`, and `unsupported_nested`
+  are explicit outcomes. A null geometry is never treated as success.
+
+`derived.osm_route_members` resolves ordered route members as stop positions,
+platforms, path ways, or other relations while retaining the original OSM
+sequence, role, identity, tags, and geometry. `derived.osm_route_variants`
+resolves `route_master` membership when such superrelations are present in the
+extract.
+
+No school, pharmacy, park, road, or transport application object is created in
+this layer. Those meanings belong to the future canonical catalogue.
+
 ## Schema management
 
-Alembic is the sole production schema-management mechanism. Revision `20260922_0002` extends source metadata and creates OSM staging. Runtime application code never calls `create_all()`.
+Alembic is the sole production schema-management mechanism. Revision
+`20260922_0002` creates OSM staging; revision `20260923_0003` creates the
+derived relation-geometry layer. Runtime application code never calls
+`create_all()`.

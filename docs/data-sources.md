@@ -22,7 +22,7 @@ The download writes to a `.part` file, verifies the provider MD5 when available,
 
 Region profiles live in `config/osm/regions.json`. `spb_smoke` is the fast real-data acceptance box. `spb_lo` is a coarse geographic bounding box covering Saint Petersburg and Leningrad Oblast; it is explicitly not an official administrative boundary.
 
-Osmium's `simple` extraction strategy is used because current high OSM node IDs make `complete_ways` require more than the 4 GB reference Docker allocation. Ways crossing the bbox can therefore lack out-of-bounds node references and receive null geometry; all retained source tags and identity remain intact. Exact boundary/reference completion is deferred with administrative clipping work.
+Osmium's `simple` extraction strategy is used because current high OSM node IDs make `complete_ways` require more than the 4 GB reference Docker allocation. Ways crossing the bbox can therefore lack out-of-bounds node references and receive null geometry; all retained source tags and identity remain intact. FOUNDATION 2 exposes these cases as `partial` or `incomplete` instead of silently presenting them as complete geometry. Exact boundary/reference completion remains part of later administrative clipping work.
 
 Every future source must have a registry entry with provider, URL, licence, and attribution before ingestion. A source adapter translates provider-specific records into staging and then canonical structures. Consumers must not branch on the original provider.
 

@@ -2,7 +2,7 @@
 
 KARTASPB v2 is a desktop-only, data-driven GIS platform for analysing how convenient places in Saint Petersburg and the Leningrad Region are for living. It is not a property listing, mortgage, or residential-complex catalogue.
 
-FOUNDATION 1 adds a source-oriented OpenStreetMap ingestion engine. It downloads a provider PBF safely, creates configured geographic extracts with Osmium, imports complete raw tags and OSM identity through osm2pgsql Flex, and stops at PostGIS `staging`. The former `upkmsr/kartaSPB` project remains a reference implementation and is not modified by this repository.
+FOUNDATION 1 adds a source-oriented OpenStreetMap ingestion engine. It downloads a provider PBF safely, creates configured geographic extracts with Osmium, and imports complete raw tags and OSM identity into PostGIS `staging`. FOUNDATION 2 adds the separate `derived` GIS layer for assembled multipolygons, holes, boundaries, route linework, ordered members, and explicit geometry diagnostics. It does not create canonical application categories. The former `upkmsr/kartaSPB` project remains a reference implementation and is not modified by this repository.
 
 ## Architecture
 
