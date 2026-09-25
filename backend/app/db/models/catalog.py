@@ -9,6 +9,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     CheckConstraint,
+    Computed,
     DateTime,
     ForeignKey,
     Identity,
@@ -52,6 +53,15 @@ class CatalogObject(Base):
         Index("ix_catalog_objects_geom_gist", "geom", postgresql_using="gist"),
         Index("ix_catalog_objects_kind_status", "object_kind", "lifecycle_status"),
         Index("ix_catalog_objects_properties_gin", "properties", postgresql_using="gin"),
+        Index(
+            "ix_catalog_objects_search_name_trgm",
+            "search_name",
+            postgresql_using="gin",
+            postgresql_ops={"search_name": "gin_trgm_ops"},
+            postgresql_where=text(
+                "lifecycle_status = 'active' AND search_name IS NOT NULL"
+            ),
+        ),
         Index("ix_catalog_objects_superseded_by", "superseded_by"),
         {"schema": "catalog"},
     )
@@ -67,6 +77,10 @@ class CatalogObject(Base):
         String(16), default="active", server_default="active"
     )
     name: Mapped[str | None] = mapped_column(Text())
+    search_name: Mapped[str | None] = mapped_column(
+        Text(),
+        Computed("lower(translate(name, 'Ёё', 'Ее'))", persisted=True),
+    )
     geom: Mapped[Any | None] = mapped_column(Geometry("GEOMETRY", srid=4326, spatial_index=False))
     name_source_id: Mapped[int | None] = mapped_column(
         ForeignKey(
