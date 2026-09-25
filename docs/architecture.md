@@ -87,11 +87,42 @@ errors retain the last complete source; a successful empty result deliberately
 clears it. Object selection loads compact canonical details by UUID and never
 reads raw OSM payloads.
 
-The default style is a local, token-free dark MapLibre style so catalog overlays
-remain usable without a basemap provider. `VITE_MAP_STYLE_URL` can select an
-external MapLibre-compatible style; attribution remains the responsibility of
-that style's source definitions, and an initial style failure falls back to the
-local dark style.
+The normal development style is the token-free OpenFreeMap dark basemap selected
+through `VITE_MAP_STYLE_URL`, with explicit OpenFreeMap/OpenMapTiles/OpenStreetMap
+attribution. A local background-only style remains the emergency fallback. A
+style failure reinstalls that fallback and then restores the single catalog
+source, render layers, and most recent FeatureCollection.
+
+The production pipeline explicitly emits the MapLibre worker as a JavaScript
+asset and configures MapLibre with that URL before map construction. The map
+delivery path is therefore:
+
+```text
+PostGIS catalog
+  -> generic bounded GeoJSON API
+  -> MapLibre worker
+  -> one catalog GeoJSON source
+  -> Layer Registry
+  -> production render layers
+  -> canonical UUID click and details card
+```
+
+This explicit worker path prevents the previously observed production failure:
+the worker asset was not emitted at the URL MapLibre requested, nginx returned
+the SPA `index.html` fallback with `text/html`, and GeoJSON/vector source
+processing never started even though the DOM and WebGL canvas were healthy.
+
+## Known map data quality
+
+The water layer represents the baseline OSM mappings implemented in FOUNDATION
+3B, including the supported polygon water semantics and `waterway=river` line
+ways. Coverage is not exhaustive for every OSM water semantic; detailed river
+and water enrichment is deferred to a dedicated data-enrichment stage.
+
+`boundary.administrative` remains a generic technical baseline layer. It is not
+an authoritative representation of the exact 18 Saint Petersburg districts.
+Exact district semantics and an authoritative/derived district registry are
+deferred to FOUNDATION 5.
 
 ## Dependency direction
 
@@ -103,9 +134,10 @@ transport categories.
 
 ## Deferred work
 
-Category extraction, exact administrative clipping, basemap layers, routing,
-and scoring remain deferred. Transport routes retain their ordered semantics in
-`derived` and are deliberately excluded from generic `catalog.objects`.
+Exact administrative clipping, routing, scoring, exhaustive water semantics,
+and the authoritative district registry remain deferred. Transport routes
+retain their ordered semantics in `derived` and are deliberately excluded from
+generic `catalog.objects`.
 # Category boundary
 
 FOUNDATION 3B classifies canonical objects through declarative taxonomy and
