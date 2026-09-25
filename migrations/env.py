@@ -9,6 +9,7 @@ from app.db.models import (  # noqa: F401
     CatalogObject,
     CatalogRelationship,
     DatasetSource,
+    District,
     ImportRun,
     ObjectSource,
     OsmRelationGeometry,
