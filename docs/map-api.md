@@ -57,10 +57,11 @@ case-insensitive and treats Russian `ё` as `е`. Optional `categories` and `dis
 parameters use the same enabled-category and exact district-intersection contracts as the
 map API. `limit` defaults to 20 and is capped at 50.
 
-Ranking is deterministic: exact, prefix, word-prefix, substring, and trigram matches are
-ordered by match quality, while repeated normalized names are interleaved so a single
-duplicate name cannot hide all other relevant names. Duplicate-name objects are never
-collapsed; canonical UUID remains result identity.
+Ranking is deterministic: exact, prefix, word-prefix, and substring matches are ordered
+by match class and trigram similarity, while repeated normalized names are interleaved so
+a single duplicate name cannot hide all other relevant names. Duplicate-name objects are
+never collapsed; canonical UUID remains result identity. Trigrams rank deterministic
+substring candidates; they do not introduce typo-tolerant fuzzy matches.
 
 Each result contains the canonical ID and name, all active categories, object kind,
 geometry type, a representative point, and bbox. Points remain unchanged; other geometry
@@ -71,3 +72,7 @@ object-detail endpoints.
 Search uses the generated `catalog.objects.search_name` column and a partial `pg_trgm`
 GIN index for active named objects. It does not search raw provider tags or introduce an
 external search service.
+
+Dense `transport.road` and `transport.stop` map requests use the spatial-first strategy;
+other baseline categories use category-first selection. Search and map query-plan
+acceptance measurements are recorded in [performance.md](performance.md).

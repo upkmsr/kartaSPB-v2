@@ -91,7 +91,8 @@ It starts from OSM relation `337422` and follows its references; it does not cha
 
 Canonical name search is available at `GET /api/search`. It supports optional existing
 category and district scopes and returns lightweight navigation geometry without exposing
-raw source payloads. See [map-api.md](docs/map-api.md) for the contract.
+raw source payloads. See [map-api.md](docs/map-api.md) for the contract and
+[performance.md](docs/performance.md) for query-plan acceptance.
 
 `download --force` explicitly checks for an upstream refresh; `extract --force` rebuilds an extract. Normal download and extract commands are checksum-idempotent. `spb_lo` is a geographic bounding box, not an official administrative boundary.
 
