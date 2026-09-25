@@ -19,6 +19,7 @@ export type GeoJSONGeometry =
   | MultiPolygon;
 
 export type MapFeatureProperties = {
+  canonical_id: string;
   name: string | null;
   categories: string[];
   object_kind: string;

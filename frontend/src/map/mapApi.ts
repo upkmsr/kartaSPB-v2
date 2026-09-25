@@ -41,6 +41,7 @@ const isStringArray = (value: unknown): value is string[] =>
 
 const isMapFeatureProperties = (value: unknown): value is MapFeatureProperties =>
   isRecord(value) &&
+  typeof value.canonical_id === "string" &&
   (typeof value.name === "string" || value.name === null) &&
   isStringArray(value.categories) &&
   typeof value.object_kind === "string";
@@ -171,7 +172,8 @@ export const fetchObjectDetail = async (
   objectId: string,
   signal?: AbortSignal,
 ): Promise<ObjectDetail> => {
-  const response = await fetch(`${apiBaseUrl}/api/objects/${encodeURIComponent(objectId)}`, {
+  const requestUrl = `${apiBaseUrl}/api/objects/${encodeURIComponent(objectId)}`;
+  const response = await fetch(requestUrl, {
     signal,
     headers: { Accept: "application/json" },
   });

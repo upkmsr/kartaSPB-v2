@@ -143,6 +143,7 @@ def test_real_postgis_map_and_detail_contracts(client: TestClient) -> None:
             for feature in payload["features"]
             if feature["id"] == str(object_ids[0])
         )
+        assert point["properties"]["canonical_id"] == str(object_ids[0])
         assert point["properties"]["categories"] == sorted(categories[:2])
 
         limited = client.get(

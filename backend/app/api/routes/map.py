@@ -75,6 +75,7 @@ def map_features(
                 id=feature.id,
                 geometry=feature.geometry,
                 properties=MapFeatureProperties(
+                    canonical_id=feature.id,
                     name=feature.name,
                     categories=feature.categories,
                     object_kind=feature.object_kind,

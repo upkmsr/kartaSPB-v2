@@ -78,6 +78,7 @@ def test_map_features_contract_default_limit_and_multiple_categories(client: Tes
                 "id": "c49e54e1-3481-4b07-9f81-0b161b57b62b",
                 "geometry": {"type": "Point", "coordinates": [30.3, 60.0]},
                 "properties": {
+                    "canonical_id": "c49e54e1-3481-4b07-9f81-0b161b57b62b",
                     "name": "Озерки",
                     "categories": ["healthcare.pharmacy", "transport.stop"],
                     "object_kind": "feature",

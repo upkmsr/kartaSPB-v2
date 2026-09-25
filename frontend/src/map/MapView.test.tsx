@@ -1,13 +1,17 @@
 import { act, render } from "@testing-library/react";
+import * as maplibregl from "maplibre-gl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultVisibleLayerIds } from "./layerRegistry";
 import { MapView } from "./MapView";
+import type { CatalogFeatureCollection } from "./mapTypes";
 
 type MockSource = { setData: ReturnType<typeof vi.fn> };
 type MockMapInstance = {
   handlers: Record<string, Array<(...args: unknown[]) => void>>;
   layers: Map<string, { id: string }>;
   source: MockSource | null;
+  addedSourceData: unknown[];
+  renderedFeatures: Array<{ id?: string | number; properties?: Record<string, unknown> }>;
   zoom: number;
   bounds: { west: number; south: number; east: number; north: number };
   emit: (event: string, value?: unknown) => void;
@@ -21,6 +25,9 @@ vi.mock("maplibre-gl", () => {
     handlers: Record<string, Array<(...args: unknown[]) => void>> = {};
     layers = new Map<string, { id: string }>();
     source: MockSource | null = null;
+    addedSourceData: unknown[] = [];
+    renderedFeatures: Array<{ id?: string | number; properties?: Record<string, unknown> }> = [];
+    canvas = document.createElement("canvas");
     zoom = 12;
     bounds = { west: 30.3, south: 59.93, east: 30.32, north: 59.945 };
     setLayoutProperty = vi.fn();
@@ -40,7 +47,8 @@ vi.mock("maplibre-gl", () => {
     getSource() {
       return this.source;
     }
-    addSource() {
+    addSource(_id: string, source: { data: unknown }) {
+      this.addedSourceData.push(source.data);
       this.source = { setData: vi.fn() };
     }
     getLayer(id: string) {
@@ -62,11 +70,12 @@ vi.mock("maplibre-gl", () => {
       return this.zoom;
     }
     queryRenderedFeatures() {
-      return [];
+      return this.renderedFeatures;
     }
     getCanvas() {
-      return { style: { cursor: "" } };
+      return this.canvas;
     }
+    resize() {}
     isStyleLoaded() {
       return true;
     }
@@ -78,6 +87,8 @@ vi.mock("maplibre-gl", () => {
     Map: MapMock,
     NavigationControl: class {},
     ScaleControl: class {},
+    setWorkerUrl: vi.fn(),
+    getWorkerUrl: vi.fn(() => "/assets/maplibre-gl-worker.js"),
   };
 });
 
@@ -101,6 +112,7 @@ describe("MapView MapLibre integration", () => {
           id: "3f24df02-2d4c-4595-bc44-74e0c7af83cd",
           geometry: { type: "Point", coordinates: [30.31, 59.94] },
           properties: {
+            canonical_id: "3f24df02-2d4c-4595-bc44-74e0c7af83cd",
             name: "Школа",
             categories: ["education.school"],
             object_kind: "feature",
@@ -128,6 +140,9 @@ describe("MapView MapLibre integration", () => {
     act(() => map.emit("style.load"));
     await act(async () => vi.runAllTimersAsync());
 
+    expect(maplibregl.setWorkerUrl).toHaveBeenCalledWith(
+      expect.stringContaining("maplibre-gl-worker"),
+    );
     expect(map.source).not.toBeNull();
     expect(map.layers.has("water-fill")).toBe(true);
     expect(map.layers.has("school-point")).toBe(true);
@@ -144,9 +159,55 @@ describe("MapView MapLibre integration", () => {
     act(() => map.emit("moveend"));
     await act(async () => vi.runAllTimersAsync());
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(map.addedSourceData).toHaveLength(1);
     const zoomedUrl = new URL(String(fetchMock.mock.calls[1][0]), "http://localhost");
     expect(zoomedUrl.searchParams.get("categories")).toContain("transport.road");
     expect(zoomedUrl.searchParams.get("categories")).toContain("transport.stop");
+  });
+
+  it("restores the latest collection after a style reload", async () => {
+    const featureCollection: CatalogFeatureCollection = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: "3f24df02-2d4c-4595-bc44-74e0c7af83cd",
+          geometry: { type: "Polygon", coordinates: [] },
+          properties: {
+            canonical_id: "3f24df02-2d4c-4595-bc44-74e0c7af83cd",
+            name: "Парк",
+            categories: ["nature.park"],
+            object_kind: "feature",
+          },
+        },
+      ],
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(featureCollection), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    render(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        selectedFeatureId={null}
+        onFeatureSelect={vi.fn()}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+
+    map.source = null;
+    map.layers.clear();
+    act(() => map.emit("style.load"));
+
+    expect(map.addedSourceData.at(-1)).toEqual(featureCollection);
+    expect(map.layers.has("water-fill")).toBe(true);
+    expect(map.layers.has("selection-point")).toBe(true);
   });
 
   it("preserves source data on feature limits and bbox guard failures", async () => {
@@ -190,7 +251,12 @@ describe("MapView MapLibre integration", () => {
           type: "Feature",
           id: "3f24df02-2d4c-4595-bc44-74e0c7af83cd",
           geometry: { type: "Point", coordinates: [30.31, 59.94] },
-          properties: { name: "Школа", categories: ["education.school"], object_kind: "feature" },
+          properties: {
+            canonical_id: "3f24df02-2d4c-4595-bc44-74e0c7af83cd",
+            name: "Школа",
+            categories: ["education.school"],
+            object_kind: "feature",
+          },
         },
       ],
     };
@@ -235,5 +301,39 @@ describe("MapView MapLibre integration", () => {
       expect.objectContaining({ status: "empty" }),
     );
     expect(map.source?.setData).toHaveBeenCalledTimes(2);
+  });
+
+  it("selects the stable canonical UUID from properties after worker processing", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ type: "FeatureCollection", features: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const onFeatureSelect = vi.fn();
+    render(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        selectedFeatureId={null}
+        onFeatureSelect={onFeatureSelect}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+
+    map.renderedFeatures = [
+      {
+        id: 17,
+        properties: { canonical_id: "c49e54e1-3481-4b07-9f81-0b161b57b62b" },
+      },
+    ];
+    act(() => map.emit("click", { point: { x: 10, y: 10 } }));
+
+    expect(onFeatureSelect).toHaveBeenCalledWith(
+      "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+    );
   });
 });

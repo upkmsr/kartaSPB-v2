@@ -12,6 +12,7 @@
     {"id":"osm.clinic.healthcare","version":"1","category":"healthcare.clinic","geometry_families":["point","polygon"],"conditions":[{"tag":"healthcare","operator":"equals","value":"clinic"}]},
     {"id":"osm.park.leisure","version":"1","category":"nature.park","geometry_families":["polygon"],"conditions":[{"tag":"leisure","operator":"equals","value":"park"}]},
     {"id":"osm.water.natural","version":"1","category":"nature.water","geometry_families":["polygon"],"conditions":[{"tag":"natural","operator":"equals","value":"water"}]},
+    {"id":"osm.water.riverway","version":"1","category":"nature.water","source_object_types":["way"],"geometry_families":["line"],"conditions":[{"tag":"waterway","operator":"equals","value":"river"}]},
     {"id":"osm.stop.bus","version":"1","category":"transport.stop","source_object_types":["node"],"geometry_families":["point"],"conditions":[{"tag":"highway","operator":"equals","value":"bus_stop"}]},
     {"id":"osm.stop.position","version":"1","category":"transport.stop","source_object_types":["node"],"geometry_families":["point"],"conditions":[{"tag":"public_transport","operator":"equals","value":"stop_position"}]},
     {"id":"osm.stop.tram","version":"1","category":"transport.stop","source_object_types":["node"],"geometry_families":["point"],"conditions":[{"tag":"railway","operator":"equals","value":"tram_stop"}]},

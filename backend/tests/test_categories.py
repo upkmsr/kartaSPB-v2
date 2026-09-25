@@ -16,6 +16,12 @@ def test_config_and_deterministic_rule_matching() -> None:
         "highway": "primary"
     }
     assert match_rule(road, {"highway": "primary"}, "node", "point", "feature") is None
+    river = next(rule for rule in rules if rule.id == "osm.water.riverway")
+    assert match_rule(river, {"waterway": "river"}, "way", "line", "feature") == {
+        "waterway": "river"
+    }
+    assert match_rule(river, {"waterway": "stream"}, "way", "line", "feature") is None
+    assert match_rule(river, {"waterway": "river"}, "relation", "line", "feature") is None
 
 
 @pytest.mark.parametrize(

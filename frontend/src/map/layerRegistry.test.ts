@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
 import {
   activeCategoryKeys,
   categoryFilter,
@@ -49,5 +50,47 @@ describe("layerRegistry", () => {
       ["in", "education.school", ["get", "categories"]],
       ["==", ["geometry-type"], "Polygon"],
     ]);
+  });
+
+  it("matches array categories and MapLibre polygon geometry", () => {
+    const parkFilter = featureFilter(
+      categoryFilter("nature.park", "polygon"),
+      "layers[park-fill].filter",
+    ).filter;
+
+    expect(
+      parkFilter(
+        { zoom: 12 },
+        { type: 3, properties: { categories: ["nature.park"] } } as never,
+      ),
+    ).toBe(true);
+    expect(
+      parkFilter(
+        { zoom: 12 },
+        { type: 3, properties: { categories: ["nature.water"] } } as never,
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts real LineString water and road features only at their layer geometry", () => {
+    const waterLineFilter = featureFilter(
+      categoryFilter("nature.water", "line"),
+      "layers[water-river-line].filter",
+    ).filter;
+    const roadLineFilter = featureFilter(
+      categoryFilter("transport.road", "line"),
+      "layers[road-line].filter",
+    ).filter;
+    const lineFeature = (category: string) =>
+      ({ type: 2, properties: { categories: [category] } }) as never;
+
+    expect(waterLineFilter({ zoom: 12 }, lineFeature("nature.water"))).toBe(true);
+    expect(roadLineFilter({ zoom: 16 }, lineFeature("transport.road"))).toBe(true);
+    expect(
+      roadLineFilter(
+        { zoom: 16 },
+        { type: 3, properties: { categories: ["transport.road"] } } as never,
+      ),
+    ).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -49,26 +50,55 @@ class ObjectDetailData:
     sources: list[SourceSummaryData]
 
 
-MAP_FEATURE_IDS_SQL = text(
+MAP_FEATURE_IDS_CATEGORY_FIRST_SQL = text(
     """
-    WITH envelope AS (
+    WITH category_ids AS MATERIALIZED (
+        SELECT DISTINCT category.object_id
+        FROM catalog.object_categories AS category
+        WHERE category.lifecycle_status = 'active'
+          AND category.category_key = ANY(:categories)
+    ), category_objects AS MATERIALIZED (
+        SELECT object.id, object.geom
+        FROM category_ids AS candidate
+        JOIN catalog.objects AS object ON object.id = candidate.object_id
+        WHERE object.lifecycle_status = 'active'
+    ), envelope AS (
         SELECT ST_MakeEnvelope(
             :min_lon, :min_lat, :max_lon, :max_lat, 4326
         ) AS geom
     )
     SELECT object.id
-    FROM catalog.objects AS object
+    FROM category_objects AS object
     CROSS JOIN envelope
-    WHERE object.lifecycle_status = 'active'
-      AND object.geom && envelope.geom
+    WHERE object.geom && envelope.geom
       AND ST_Intersects(object.geom, envelope.geom)
-      AND EXISTS (
-          SELECT 1
-          FROM catalog.object_categories AS filter_category
-          WHERE filter_category.object_id = object.id
-            AND filter_category.lifecycle_status = 'active'
-            AND filter_category.category_key = ANY(:categories)
-      )
+    LIMIT :fetch_limit
+    """
+)
+
+MAP_FEATURE_IDS_SPATIAL_FIRST_SQL = text(
+    """
+    WITH envelope AS (
+        SELECT ST_MakeEnvelope(
+            :min_lon, :min_lat, :max_lon, :max_lat, 4326
+        ) AS geom
+    ), spatial_objects AS MATERIALIZED (
+        SELECT object.id
+        FROM catalog.objects AS object
+        CROSS JOIN envelope
+        WHERE object.lifecycle_status = 'active'
+          AND object.geom && envelope.geom
+          AND ST_Intersects(object.geom, envelope.geom)
+    )
+    SELECT candidate.id
+    FROM spatial_objects AS candidate
+    WHERE EXISTS (
+        SELECT 1
+        FROM catalog.object_categories AS category
+        WHERE category.object_id = candidate.id
+          AND category.lifecycle_status = 'active'
+          AND category.category_key = ANY(:categories)
+    )
     LIMIT :fetch_limit
     """
 )
@@ -143,7 +173,7 @@ class MapCatalogService:
         self, bbox: BoundingBox, categories: tuple[str, ...], limit: int
     ) -> list[MapFeatureData]:
         with self.engine.connect() as connection:
-            enabled = set(
+            enabled: set[str] = set(
                 connection.execute(
                     text(
                         "SELECT key FROM catalog.categories "
@@ -155,8 +185,13 @@ class MapCatalogService:
             unknown = sorted(set(categories) - enabled)
             if unknown:
                 raise UnknownCategoriesError(unknown)
-            object_ids = connection.execute(
-                MAP_FEATURE_IDS_SQL,
+            feature_ids_sql = (
+                MAP_FEATURE_IDS_SPATIAL_FIRST_SQL
+                if "transport.road" in categories
+                else MAP_FEATURE_IDS_CATEGORY_FIRST_SQL
+            )
+            object_ids: Sequence[UUID] = connection.execute(
+                feature_ids_sql,
                 {
                     "min_lon": bbox.min_lon,
                     "min_lat": bbox.min_lat,

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type {
   FilterSpecification,
   GeoJSONSource,
@@ -25,6 +26,11 @@ const SOURCE_ID = "catalog-features";
 const INITIAL_CENTER: [number, number] = [30.3158, 59.9398];
 const INITIAL_ZOOM = 12;
 const VIEWPORT_DEBOUNCE_MS = 200;
+const DEFAULT_STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
+const BASEMAP_ATTRIBUTION =
+  '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> ' +
+  '<a href="https://www.openmaptiles.org/" target="_blank">© OpenMapTiles</a> ' +
+  'Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>';
 
 const localDarkStyle: StyleSpecification = {
   version: 8,
@@ -40,6 +46,9 @@ const localDarkStyle: StyleSpecification = {
 };
 
 const configuredStyleUrl = import.meta.env.VITE_MAP_STYLE_URL?.trim();
+const primaryStyleUrl =
+  configuredStyleUrl === "local" ? null : configuredStyleUrl || DEFAULT_STYLE_URL;
+const basemapAttribution = primaryStyleUrl === DEFAULT_STYLE_URL ? BASEMAP_ATTRIBUTION : undefined;
 
 export type MapViewProps = {
   visibleLayerIds: ReadonlySet<string>;
@@ -52,7 +61,11 @@ export type MapViewProps = {
 const selectedFilter = (
   geometry: "point" | "line" | "polygon",
   selectedId: string | null,
-): FilterSpecification => ["all", geometryFilter(geometry), ["==", ["id"], selectedId ?? ""]];
+): FilterSpecification => [
+  "all",
+  geometryFilter(geometry),
+  ["==", ["get", "canonical_id"], selectedId ?? ""],
+];
 
 const installCatalogLayers = (
   map: MapLibreMap,
@@ -98,7 +111,7 @@ const installCatalogLayers = (
       filter: [
         "all",
         ["any", geometryFilter("line"), geometryFilter("polygon")],
-        ["==", ["id"], selectedId ?? ""],
+        ["==", ["get", "canonical_id"], selectedId ?? ""],
       ],
       paint: { "line-color": "#bbff3c", "line-width": 4, "line-opacity": 1 },
     });
@@ -123,7 +136,7 @@ const updateSelectionFilters = (map: MapLibreMap, selectedId: string | null): vo
   map.setFilter("selection-line", [
     "all",
     ["any", geometryFilter("line"), geometryFilter("polygon")],
-    ["==", ["id"], selectedId ?? ""],
+    ["==", ["get", "canonical_id"], selectedId ?? ""],
   ]);
   map.setFilter("selection-point", selectedFilter("point", selectedId));
 };
@@ -156,17 +169,34 @@ export function MapView({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
+    maplibregl.setWorkerUrl(maplibreWorkerUrl);
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: configuredStyleUrl || localDarkStyle,
+      style: primaryStyleUrl || localDarkStyle,
       center: INITIAL_CENTER,
       zoom: INITIAL_ZOOM,
-      attributionControl: { compact: true },
+      attributionControl: {
+        compact: true,
+        ...(basemapAttribution ? { customAttribution: basemapAttribution } : {}),
+      },
       renderWorldCopies: false,
     });
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
+
+    let resizeFrame: number | null = null;
+    const resizeMap = (): void => {
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = null;
+        map.resize();
+      });
+    };
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resizeMap);
+    resizeObserver?.observe(containerRef.current);
+    resizeMap();
 
     const setSourceData = (collection: CatalogFeatureCollection): void => {
       const source = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
@@ -240,12 +270,18 @@ export function MapView({
     };
 
     let localFallbackApplied = false;
+    let primaryStyleLoaded = false;
     map.on("style.load", installOverlay);
-    map.on("error", () => {
-      if (configuredStyleUrl && !localFallbackApplied && !map.isStyleLoaded()) {
+    map.on("load", () => {
+      primaryStyleLoaded = true;
+    });
+    map.on("error", (event) => {
+      if (primaryStyleUrl && !localFallbackApplied && !primaryStyleLoaded) {
         localFallbackApplied = true;
         map.setStyle(localDarkStyle);
+        return;
       }
+      console.error("MapLibre runtime error", event.error ?? event);
     });
     map.on("moveend", () => {
       onZoomChangeRef.current(map.getZoom());
@@ -253,21 +289,25 @@ export function MapView({
     });
     map.on("mousemove", (event: maplibregl.MapMouseEvent) => {
       const layers = interactiveRenderLayerIds.filter((id) => map.getLayer(id));
-      const interactive = layers.length > 0 && map.queryRenderedFeatures(event.point, { layers }).length > 0;
+      const interactive =
+        layers.length > 0 && map.queryRenderedFeatures(event.point, { layers }).length > 0;
       map.getCanvas().style.cursor = interactive ? "pointer" : "";
     });
     map.on("click", (event: maplibregl.MapMouseEvent) => {
       const layers = interactiveRenderLayerIds.filter((id) => map.getLayer(id));
       if (layers.length === 0) return;
       const feature = map.queryRenderedFeatures(event.point, { layers })[0];
-      if (typeof feature?.id === "string" || typeof feature?.id === "number") {
-        onFeatureSelectRef.current(String(feature.id));
+      const canonicalId = feature?.properties?.canonical_id;
+      if (typeof canonicalId === "string") {
+        onFeatureSelectRef.current(canonicalId);
       }
     });
 
     const request = requestRef.current;
     return () => {
       if (debounceTimerRef.current !== null) window.clearTimeout(debounceTimerRef.current);
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
+      resizeObserver?.disconnect();
       request.cancel();
       map.remove();
       mapRef.current = null;

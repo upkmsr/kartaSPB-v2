@@ -10,6 +10,7 @@ class GeoJSONGeometry(BaseModel):
 
 
 class MapFeatureProperties(BaseModel):
+    canonical_id: UUID
     name: str | None
     categories: list[str]
     object_kind: str
