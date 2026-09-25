@@ -32,7 +32,13 @@ def _error(detail: ErrorDetail) -> HTTPException:
 )
 def search(
     service: Annotated[SearchCatalogService, Depends(get_search_catalog_service)],
-    q: Annotated[str, Query(description="Name query; normalized case-insensitively")],
+    q: Annotated[
+        str,
+        Query(
+            description="Name query; 3-100 characters after normalization",
+            json_schema_extra={"minLength": 3, "maxLength": 100},
+        ),
+    ],
     categories: Annotated[
         str | None, Query(description="Optional comma-separated category keys")
     ] = None,

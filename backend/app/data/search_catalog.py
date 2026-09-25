@@ -148,7 +148,14 @@ def _search_sql(*, categories: bool, district_mode: DistrictMode) -> TextClause:
                result.name,
                result.object_kind,
                replace(ST_GeometryType(object.geom), 'ST_', '') AS geometry_type,
-               ST_AsGeoJSON(ST_PointOnSurface(object.geom), 6)::jsonb
+               ST_AsGeoJSON(
+                   CASE
+                     WHEN ST_GeometryType(object.geom) = 'ST_LineString'
+                       THEN ST_LineInterpolatePoint(object.geom, 0.5)
+                     ELSE ST_PointOnSurface(object.geom)
+                   END,
+                   6
+               )::jsonb
                    AS representative_point,
                ARRAY[
                    ST_XMin(Box3D(object.geom)),

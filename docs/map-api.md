@@ -52,7 +52,7 @@ Interactive schemas and request details are available from FastAPI at `/docs`.
 ## Search
 
 `GET /api/search` searches active canonical objects by normalized `name`. The required
-`q` parameter is 2–100 characters after trimming and whitespace normalization. Search is
+`q` parameter is 3–100 characters after trimming and whitespace normalization. Search is
 case-insensitive and treats Russian `ё` as `е`. Optional `categories` and `districts`
 parameters use the same enabled-category and exact district-intersection contracts as the
 map API. `limit` defaults to 20 and is capped at 50.
@@ -64,10 +64,15 @@ never collapsed; canonical UUID remains result identity. Trigrams rank determini
 substring candidates; they do not introduce typo-tolerant fuzzy matches.
 
 Each result contains the canonical ID and name, all active categories, object kind,
-geometry type, a representative point, and bbox. Points remain unchanged; other geometry
-types use `ST_PointOnSurface`, which avoids the outside-polygon behavior possible with a
-centroid. Full geometry and source details continue to come from the existing map and
-object-detail endpoints.
+geometry type, a representative point, and bbox. Points remain unchanged, LineStrings use
+the half-length point from `ST_LineInterpolatePoint(geom, 0.5)`, and Polygon/MultiPolygon
+objects use `ST_PointOnSurface`, avoiding the outside-polygon behavior possible with a
+centroid. MultiLineString is not currently present in the active searchable catalog and
+has no API guarantee. Full geometry and source details continue to come from the existing
+map and object-detail endpoints.
+
+The frontend request lifecycle and navigation contract are frozen in
+[search-ux-contract.md](search-ux-contract.md).
 
 Search uses the generated `catalog.objects.search_name` column and a partial `pg_trgm`
 GIN index for active named objects. It does not search raw provider tags or introduce an

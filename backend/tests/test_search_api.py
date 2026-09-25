@@ -75,13 +75,16 @@ def test_search_rejects_invalid_query_and_limit(client: TestClient) -> None:
     service = FakeSearchService()
     app.dependency_overrides[get_search_catalog_service] = lambda: service
     try:
-        short = client.get("/api/search", params={"q": "x"})
+        short = client.get("/api/search", params={"q": "не"})
+        minimum = client.get("/api/search", params={"q": "нев"})
         large_limit = client.get("/api/search", params={"q": "park", "limit": 51})
     finally:
         app.dependency_overrides.clear()
 
     assert short.status_code == 422
     assert short.json()["detail"]["code"] == "invalid_request"
+    assert minimum.status_code == 200
+    assert service.call == ("нев", (), (), 20)
     assert large_limit.status_code == 422
 
 
@@ -138,3 +141,8 @@ def test_openapi_exposes_search_filters(client: TestClient) -> None:
         "districts",
         "limit",
     }
+    query = next(
+        parameter for parameter in operation["parameters"] if parameter["name"] == "q"
+    )
+    assert query["schema"]["minLength"] == 3
+    assert query["schema"]["maxLength"] == 100

@@ -28,6 +28,8 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
         UUID("10000000-0000-0000-0000-000000000104"),
         UUID("10000000-0000-0000-0000-000000000105"),
         UUID("10000000-0000-0000-0000-000000000106"),
+        UUID("10000000-0000-0000-0000-000000000107"),
+        UUID("10000000-0000-0000-0000-000000000108"),
     ]
     all_object_ids = [district_object_id, *object_ids]
     try:
@@ -69,7 +71,16 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
                          '10.15 10.25,10.15 10.15))',4326
                        ),'{}','{}',1),
                       (:inactive,'feature','inactive','Аптека закрыта',
-                       ST_Point(10.4,10.4,4326),'{}','{}',1)
+                       ST_Point(10.4,10.4,4326),'{}','{}',1),
+                      (:line,'feature','active','Search midpoint road',
+                       ST_GeomFromText(
+                         'LINESTRING(10.1 10.1,10.3 10.1)',4326
+                       ),'{}','{}',1),
+                      (:multipolygon,'feature','active','Search multipolygon area',
+                       ST_GeomFromText(
+                         'MULTIPOLYGON(((12 12,12.2 12,12.2 12.2,12 12.2,12 12)),'
+                         '((13 13,13.4 13,13.4 13.4,13 13.4,13 13)))',4326
+                       ),'{}','{}',1)
                     """
                 ),
                 {
@@ -80,6 +91,8 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
                     "yo": object_ids[3],
                     "park": object_ids[4],
                     "inactive": object_ids[5],
+                    "line": object_ids[6],
+                    "multipolygon": object_ids[7],
                 },
             )
             connection.execute(
@@ -107,7 +120,9 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
                       (:partial,:a,'active'),
                       (:yo,:a,'active'),
                       (:exact2,:b,'active'),
-                      (:park,:b,'active')
+                      (:park,:b,'active'),
+                      (:line,:b,'active'),
+                      (:multipolygon,:b,'active')
                     """
                 ),
                 {
@@ -116,6 +131,8 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
                     "partial": object_ids[2],
                     "yo": object_ids[3],
                     "park": object_ids[4],
+                    "line": object_ids[6],
+                    "multipolygon": object_ids[7],
                     "a": category_a,
                     "b": category_b,
                 },
@@ -135,6 +152,10 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
         ]
         assert len({item["id"] for item in ranked_results}) == 4
         assert all("score" not in item for item in ranked_results)
+        assert ranked_results[0]["representative_point"] == {
+            "type": "Point",
+            "coordinates": [10.1, 10.1],
+        }
 
         normalized_yo = client.get(
             "/api/search", params={"q": "елочная", "categories": category_a}
@@ -173,9 +194,35 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
         assert polygon.status_code == 200
         polygon_result = polygon.json()["results"][0]
         assert polygon_result["geometry_type"] == "Polygon"
-        assert polygon_result["representative_point"]["type"] == "Point"
+        assert polygon_result["representative_point"] == {
+            "type": "Point",
+            "coordinates": [10.2, 10.2],
+        }
         assert polygon_result["bbox"] == [10.15, 10.15, 10.25, 10.25]
         assert polygon_result["categories"] == [category_b]
+
+        line = client.get(
+            "/api/search", params={"q": "search midpoint road", "categories": category_b}
+        )
+        assert line.status_code == 200
+        line_result = line.json()["results"][0]
+        assert line_result["geometry_type"] == "LineString"
+        assert line_result["representative_point"] == {
+            "type": "Point",
+            "coordinates": [10.2, 10.1],
+        }
+
+        multipolygon = client.get(
+            "/api/search",
+            params={"q": "search multipolygon area", "categories": category_b},
+        )
+        assert multipolygon.status_code == 200
+        multipolygon_result = multipolygon.json()["results"][0]
+        assert multipolygon_result["geometry_type"] == "MultiPolygon"
+        assert multipolygon_result["representative_point"] == {
+            "type": "Point",
+            "coordinates": [13.2, 13.2],
+        }
 
         unknown_category = client.get(
             "/api/search",

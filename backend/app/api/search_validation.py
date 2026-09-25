@@ -2,7 +2,7 @@ import re
 
 from app.api.map_validation import MapRequestValidationError, parse_categories
 
-MIN_SEARCH_QUERY_LENGTH = 2
+MIN_SEARCH_QUERY_LENGTH = 3
 MAX_SEARCH_QUERY_LENGTH = 100
 
 
