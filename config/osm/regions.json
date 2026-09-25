@@ -8,5 +8,10 @@
     "type": "bbox",
     "bbox": [27.50, 58.35, 35.00, 61.80],
     "description": "Coarse geographic extract covering Saint Petersburg and Leningrad Oblast. Not an official administrative boundary."
+  },
+  "spb_districts": {
+    "type": "relation",
+    "relation_ids": [337422],
+    "description": "Reference-complete Saint Petersburg administrative hierarchy rooted at OSM relation 337422."
   }
 }

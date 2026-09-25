@@ -10,7 +10,15 @@ from urllib.request import Request, urlopen
 
 from sqlalchemy import URL, Connection, Engine, text
 
-from app.data.osm.config import RegionConfig, SourceConfig, load_region, load_source, project_root
+from app.data.osm.config import (
+    BboxRegionConfig,
+    RegionConfig,
+    RelationRegionConfig,
+    SourceConfig,
+    load_region,
+    load_source,
+    project_root,
+)
 from app.data.osm.database import (
     ensure_source,
     finish_import_run,
@@ -126,6 +134,40 @@ def _registered_source(connection: Connection, source: SourceConfig) -> dict[str
     return dict(row)
 
 
+def _extract_command(
+    region: RegionConfig, source_file: Path, partial: Path
+) -> list[str]:
+    if isinstance(region, BboxRegionConfig):
+        bbox = ",".join(str(value) for value in region.bbox)
+        return [
+            "osmium",
+            "extract",
+            "--bbox",
+            bbox,
+            "--strategy",
+            "simple",
+            "--output",
+            str(partial),
+            "--output-format",
+            "pbf",
+            str(source_file),
+        ]
+    if isinstance(region, RelationRegionConfig):
+        return [
+            "osmium",
+            "getid",
+            "--add-referenced",
+            "--verbose-ids",
+            "--output-format",
+            "pbf",
+            "--output",
+            str(partial),
+            str(source_file),
+            *(f"r{relation_id}" for relation_id in region.relation_ids),
+        ]
+    raise TypeError(f"Unsupported OSM region profile: {type(region).__name__}")
+
+
 def extract_region(region_name: str, *, force: bool = False, engine: Engine | None = None) -> Path:
     root = project_root()
     source_config = load_source(root)
@@ -152,23 +194,8 @@ def extract_region(region_name: str, *, force: bool = False, engine: Engine | No
     output.parent.mkdir(parents=True, exist_ok=True)
     partial = output.with_name(f"{output.name}.part")
     partial.unlink(missing_ok=True)
-    bbox = ",".join(str(value) for value in region.bbox)
     try:
-        run_command(
-            [
-                "osmium",
-                "extract",
-                "--bbox",
-                bbox,
-                "--strategy",
-                "simple",
-                "--output",
-                str(partial),
-                "--output-format",
-                "pbf",
-                str(source_file),
-            ]
-        )
+        run_command(_extract_command(region, source_file, partial))
         validate_pbf(partial)
         checksum = sha256_file(partial)
         partial.replace(output)
