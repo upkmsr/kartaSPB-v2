@@ -79,6 +79,15 @@ docker compose run --rm ingest extract --region spb_lo
 docker compose run --rm ingest import --region spb_lo
 ```
 
+The reference-complete Saint Petersburg district hierarchy is an explicit relation-rooted profile:
+
+```bash
+docker compose run --rm ingest extract --region spb_districts
+docker compose run --rm ingest import --region spb_districts
+```
+
+It starts from OSM relation `337422` and follows its references; it does not change the bbox semantics of `spb_smoke` or `spb_lo`. Use it only with the same registered source version as the bbox import it complements.
+
 `download --force` explicitly checks for an upstream refresh; `extract --force` rebuilds an extract. Normal download and extract commands are checksum-idempotent. `spb_lo` is a geographic bounding box, not an official administrative boundary.
 
 ## Checks
