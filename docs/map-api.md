@@ -1,8 +1,8 @@
 # Map API
 
 The backend exposes canonical catalog data through read-only generic endpoints.
-It does not expose raw OSM tags, source candidate payloads, import-run internals, search,
-or category-specific routes.
+It does not expose raw OSM tags, source candidate payloads, import-run internals, or
+category-specific routes.
 
 ## Districts
 
@@ -48,3 +48,26 @@ kind, geometry type, canonical properties, and compact source summaries. Inactiv
 unknown objects return 404; malformed UUIDs return 422.
 
 Interactive schemas and request details are available from FastAPI at `/docs`.
+
+## Search
+
+`GET /api/search` searches active canonical objects by normalized `name`. The required
+`q` parameter is 2–100 characters after trimming and whitespace normalization. Search is
+case-insensitive and treats Russian `ё` as `е`. Optional `categories` and `districts`
+parameters use the same enabled-category and exact district-intersection contracts as the
+map API. `limit` defaults to 20 and is capped at 50.
+
+Ranking is deterministic: exact, prefix, word-prefix, substring, and trigram matches are
+ordered by match quality, while repeated normalized names are interleaved so a single
+duplicate name cannot hide all other relevant names. Duplicate-name objects are never
+collapsed; canonical UUID remains result identity.
+
+Each result contains the canonical ID and name, all active categories, object kind,
+geometry type, a representative point, and bbox. Points remain unchanged; other geometry
+types use `ST_PointOnSurface`, which avoids the outside-polygon behavior possible with a
+centroid. Full geometry and source details continue to come from the existing map and
+object-detail endpoints.
+
+Search uses the generated `catalog.objects.search_name` column and a partial `pg_trgm`
+GIN index for active named objects. It does not search raw provider tags or introduce an
+external search service.

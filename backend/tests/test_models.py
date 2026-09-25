@@ -58,6 +58,7 @@ def test_catalog_models_use_provider_independent_schema() -> None:
         "id",
         "object_kind",
         "lifecycle_status",
+        "search_name",
         "geom",
         "name_source_id",
         "geometry_source_id",
