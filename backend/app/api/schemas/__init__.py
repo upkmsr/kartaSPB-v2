@@ -9,6 +9,7 @@ from app.api.schemas.map import (
     ObjectDetail,
     SourceSummary,
 )
+from app.api.schemas.search import SearchResult, SearchResultList
 
 __all__ = [
     "DistrictList",
@@ -21,4 +22,6 @@ __all__ = [
     "MapFeatureProperties",
     "ObjectDetail",
     "SourceSummary",
+    "SearchResult",
+    "SearchResultList",
 ]
