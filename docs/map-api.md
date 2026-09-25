@@ -1,8 +1,17 @@
 # Map API
 
-FOUNDATION 4A exposes canonical catalog data through two read-only generic endpoints.
+The backend exposes canonical catalog data through read-only generic endpoints.
 It does not expose raw OSM tags, source candidate payloads, import-run internals, search,
 or category-specific routes.
+
+## Districts
+
+`GET /api/districts` returns the 18 enabled application districts in deterministic
+`display_order`. Each entry contains its stable domain UUID, display name, ASCII slug,
+display order, and bbox. Exact district polygons are deliberately omitted: the bbox is
+sufficient for the planned selector and `fitBounds`, while exact canonical geometry
+remains internal for spatial filtering. A district detail endpoint is therefore not
+needed.
 
 ## Map features
 
@@ -10,11 +19,22 @@ or category-specific routes.
 
 - `bbox=minLon,minLat,maxLon,maxLat`;
 - `categories=category.one,category.two` (1–10 enabled catalog categories);
+- optional `districts=uuid.one,uuid.two` (up to 18 unique domain district UUIDs);
 - `limit` (default 1000, maximum 5000).
+
+Duplicate district IDs are normalized while preserving first-seen order. Invalid UUIDs,
+unknown districts, and disabled districts return structured HTTP 422 errors. Omitting
+`districts` uses the original map query with no district join. One district uses its exact
+canonical geometry directly; multiple districts build one materialized unary-union scope.
+All cases still require the viewport, and category, bbox-size, `limit + 1`, and
+`feature_limit_exceeded` behavior is unchanged.
 
 The response is a GeoJSON FeatureCollection. Every feature uses the canonical UUID as
 its GeoJSON ID and exposes only `name`, all active `categories`, and `object_kind`.
 Selection uses both the PostGIS bounding-box operator and `ST_Intersects`.
+District filtering also uses `&&` plus `ST_Intersects`, so points, lines, polygons, and
+multipolygons use true spatial intersection rather than centroid membership. An object
+crossing district boundaries is visible when either intersected district is selected.
 
 The API fetches `limit + 1`. If the complete result would exceed the requested limit it
 returns HTTP 422 with `feature_limit_exceeded`; it never presents a truncated collection

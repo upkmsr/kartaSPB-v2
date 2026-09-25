@@ -126,3 +126,18 @@ semantics and are not generic catalog places.
 
 Raw OSM tags stay in staging. Canonical identity uses exact source identity without fuzzy
 merge, and category evidence stores only matched fields plus stable rule identity/version.
+
+## District domain registry
+
+`domain.districts` is the authoritative application registry for the 18 Saint Petersburg
+districts. It is intentionally narrower than the generic `boundary.administrative`
+category. Its UUID is the stable public district identity; `canonical_object_id` is a
+rebindable reference to the current GIS object. Names, slugs, display order, OSM relation
+IDs, and frontend positions are not identities.
+
+The registry does not duplicate geometry. Exact spatial truth is read through
+`domain.districts -> catalog.objects.geom`. The idempotent district bootstrap validates
+root relation `337422`, its 18 `role=subarea` level-5 relations, active exact OSM source
+bindings, and valid non-empty SRID 4326 canonical geometry before writing any registry
+rows. The committed deterministic district UUIDs remain unchanged if a future source
+rebinding changes `canonical_object_id`.
