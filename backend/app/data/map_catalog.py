@@ -10,6 +10,8 @@ from sqlalchemy.sql.elements import TextClause
 from app.api.map_validation import BoundingBox
 from app.data.districts import validate_district_selection
 
+SPATIAL_FIRST_CATEGORIES = frozenset({"transport.road", "transport.stop"})
+
 
 class UnknownCategoriesError(ValueError):
     def __init__(self, categories: list[str]) -> None:
@@ -91,16 +93,16 @@ MAP_FEATURE_IDS_SPATIAL_FIRST_SQL = text(
         WHERE object.lifecycle_status = 'active'
           AND object.geom && envelope.geom
           AND ST_Intersects(object.geom, envelope.geom)
+    ), category_ids AS MATERIALIZED (
+        SELECT DISTINCT category.object_id
+        FROM catalog.object_categories AS category
+        WHERE category.lifecycle_status = 'active'
+          AND category.category_key = ANY(:categories)
     )
     SELECT candidate.id
     FROM spatial_objects AS candidate
-    WHERE EXISTS (
-        SELECT 1
-        FROM catalog.object_categories AS category
-        WHERE category.object_id = candidate.id
-          AND category.lifecycle_status = 'active'
-          AND category.category_key = ANY(:categories)
-    )
+    JOIN category_ids AS selected_category
+      ON selected_category.object_id = candidate.id
     LIMIT :fetch_limit
     """
 )
@@ -149,16 +151,16 @@ def _district_feature_ids_sql(*, spatial_first: bool, multiple: bool) -> TextCla
                   AND ST_Intersects(object.geom,envelope.geom)
                   AND object.geom && scope.geom
                   AND ST_Intersects(object.geom,scope.geom)
+            ), category_ids AS MATERIALIZED (
+                SELECT DISTINCT category.object_id
+                FROM catalog.object_categories AS category
+                WHERE category.lifecycle_status='active'
+                  AND category.category_key=ANY(:categories)
             )
             SELECT candidate.id
             FROM spatial_objects AS candidate
-            WHERE EXISTS (
-                SELECT 1
-                FROM catalog.object_categories AS category
-                WHERE category.object_id=candidate.id
-                  AND category.lifecycle_status='active'
-                  AND category.category_key=ANY(:categories)
-            )
+            JOIN category_ids AS selected_category
+              ON selected_category.object_id=candidate.id
             LIMIT :fetch_limit
             """
         )
@@ -204,6 +206,29 @@ MAP_FEATURE_IDS_MULTI_DISTRICT_CATEGORY_FIRST_SQL = _district_feature_ids_sql(
 MAP_FEATURE_IDS_MULTI_DISTRICT_SPATIAL_FIRST_SQL = _district_feature_ids_sql(
     spatial_first=True, multiple=True
 )
+
+
+def feature_ids_query(
+    categories: tuple[str, ...], district_ids: tuple[UUID, ...]
+) -> TextClause:
+    spatial_first = not SPATIAL_FIRST_CATEGORIES.isdisjoint(categories)
+    if not district_ids:
+        return (
+            MAP_FEATURE_IDS_SPATIAL_FIRST_SQL
+            if spatial_first
+            else MAP_FEATURE_IDS_CATEGORY_FIRST_SQL
+        )
+    if len(district_ids) == 1:
+        return (
+            MAP_FEATURE_IDS_ONE_DISTRICT_SPATIAL_FIRST_SQL
+            if spatial_first
+            else MAP_FEATURE_IDS_ONE_DISTRICT_CATEGORY_FIRST_SQL
+        )
+    return (
+        MAP_FEATURE_IDS_MULTI_DISTRICT_SPATIAL_FIRST_SQL
+        if spatial_first
+        else MAP_FEATURE_IDS_MULTI_DISTRICT_CATEGORY_FIRST_SQL
+    )
 
 MAP_FEATURE_PAYLOAD_SQL = text(
     """
@@ -292,25 +317,7 @@ class MapCatalogService:
             if unknown:
                 raise UnknownCategoriesError(unknown)
             validate_district_selection(connection, district_ids)
-            spatial_first = "transport.road" in categories
-            if not district_ids:
-                feature_ids_sql = (
-                    MAP_FEATURE_IDS_SPATIAL_FIRST_SQL
-                    if spatial_first
-                    else MAP_FEATURE_IDS_CATEGORY_FIRST_SQL
-                )
-            elif len(district_ids) == 1:
-                feature_ids_sql = (
-                    MAP_FEATURE_IDS_ONE_DISTRICT_SPATIAL_FIRST_SQL
-                    if spatial_first
-                    else MAP_FEATURE_IDS_ONE_DISTRICT_CATEGORY_FIRST_SQL
-                )
-            else:
-                feature_ids_sql = (
-                    MAP_FEATURE_IDS_MULTI_DISTRICT_SPATIAL_FIRST_SQL
-                    if spatial_first
-                    else MAP_FEATURE_IDS_MULTI_DISTRICT_CATEGORY_FIRST_SQL
-                )
+            feature_ids_sql = feature_ids_query(categories, district_ids)
             parameters: dict[str, Any] = {
                 "min_lon": bbox.min_lon,
                 "min_lat": bbox.min_lat,

@@ -55,17 +55,30 @@ def _search_sql(*, categories: bool, district_mode: DistrictMode) -> TextClause:
     scope = _district_scope_cte(district_mode)
     if scope:
         ctes.append(scope)
-    category_filter = ""
+    candidate_category_filter = ""
     if categories:
-        category_filter = """
-          AND EXISTS (
-              SELECT 1
-              FROM catalog.object_categories AS selected_category
-              WHERE selected_category.object_id = object.id
-                AND selected_category.lifecycle_status = 'active'
-                AND selected_category.category_key = ANY(:categories)
-          )
+        candidate_category_filter = """
+              AND EXISTS (
+                  SELECT 1
+                  FROM catalog.object_categories AS selected_category
+                  WHERE selected_category.object_id = object.id
+                    AND selected_category.lifecycle_status = 'active'
+                    AND selected_category.category_key = ANY(:categories)
+              )
         """
+    ctes.append(
+        f"""
+        candidate_ids AS MATERIALIZED (
+            SELECT object.id
+            FROM catalog.objects AS object
+            CROSS JOIN query_input AS input
+            WHERE object.lifecycle_status = 'active'
+              AND object.search_name IS NOT NULL
+              AND object.search_name LIKE '%' || input.value || '%'
+              {candidate_category_filter}
+        )
+        """
+    )
     district_join = ""
     district_filter = ""
     if district_mode != "none":
@@ -81,63 +94,83 @@ def _search_sql(*, categories: bool, district_mode: DistrictMode) -> TextClause:
                    object.name,
                    object.search_name,
                    object.object_kind,
-                   object.geom,
                    CASE
                      WHEN object.search_name = input.value THEN 0
                      WHEN object.search_name LIKE input.value || '%' THEN 1
                      WHEN object.search_name LIKE '% ' || input.value || '%' THEN 2
                      WHEN object.search_name LIKE '%' || input.value || '%' THEN 3
-                     ELSE 4
+                     ELSE 3
                    END AS match_rank,
                    similarity(object.search_name, input.value) AS trigram_score,
                    row_number() OVER (
                        PARTITION BY object.search_name ORDER BY object.id
                    ) AS duplicate_ordinal
-            FROM catalog.objects AS object
+            FROM candidate_ids AS candidate
+            CROSS JOIN LATERAL (
+                SELECT matched.id,
+                       matched.name,
+                       matched.search_name,
+                       matched.object_kind,
+                       matched.geom
+                FROM catalog.objects AS matched
+                WHERE matched.id = candidate.id
+                  AND matched.lifecycle_status = 'active'
+                  AND matched.name IS NOT NULL
+                  AND matched.search_name IS NOT NULL
+                OFFSET 0
+            ) AS object
             CROSS JOIN query_input AS input
             {district_join}
-            WHERE object.lifecycle_status = 'active'
-              AND object.name IS NOT NULL
-              AND object.search_name IS NOT NULL
-              AND (
-                  object.search_name LIKE '%' || input.value || '%'
-                  OR object.search_name % input.value
-              )
-              {category_filter}
+            WHERE true
               {district_filter}
+        )
+        """
+    )
+    ctes.append(
+        """
+        top_results AS MATERIALIZED (
+            SELECT *
+            FROM ranked
+            ORDER BY duplicate_ordinal,
+                     match_rank,
+                     trigram_score DESC,
+                     char_length(search_name),
+                     search_name,
+                     id
+            LIMIT :limit
         )
         """
     )
     return text(
         f"""
         WITH {','.join(ctes)}
-        SELECT ranked.id,
-               ranked.name,
-               ranked.object_kind,
-               replace(ST_GeometryType(ranked.geom), 'ST_', '') AS geometry_type,
-               ST_AsGeoJSON(ST_PointOnSurface(ranked.geom), 6)::jsonb
+        SELECT result.id,
+               result.name,
+               result.object_kind,
+               replace(ST_GeometryType(object.geom), 'ST_', '') AS geometry_type,
+               ST_AsGeoJSON(ST_PointOnSurface(object.geom), 6)::jsonb
                    AS representative_point,
                ARRAY[
-                   ST_XMin(Box3D(ranked.geom)),
-                   ST_YMin(Box3D(ranked.geom)),
-                   ST_XMax(Box3D(ranked.geom)),
-                   ST_YMax(Box3D(ranked.geom))
+                   ST_XMin(Box3D(object.geom)),
+                   ST_YMin(Box3D(object.geom)),
+                   ST_XMax(Box3D(object.geom)),
+                   ST_YMax(Box3D(object.geom))
                ]::double precision[] AS bbox,
                ARRAY(
                    SELECT category.category_key
                    FROM catalog.object_categories AS category
-                   WHERE category.object_id = ranked.id
+                   WHERE category.object_id = result.id
                      AND category.lifecycle_status = 'active'
                    ORDER BY category.category_key
                ) AS categories
-        FROM ranked
-        ORDER BY ranked.duplicate_ordinal,
-                 ranked.match_rank,
-                 ranked.trigram_score DESC,
-                 char_length(ranked.search_name),
-                 ranked.search_name,
-                 ranked.id
-        LIMIT :limit
+        FROM top_results AS result
+        JOIN catalog.objects AS object ON object.id = result.id
+        ORDER BY result.duplicate_ordinal,
+                 result.match_rank,
+                 result.trigram_score DESC,
+                 char_length(result.search_name),
+                 result.search_name,
+                 result.id
         """
     )
 
