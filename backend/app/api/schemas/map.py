@@ -52,6 +52,8 @@ class ErrorDetail(BaseModel):
     requested_limit: int | None = None
     suggestion: str | None = None
     unknown_categories: list[str] | None = None
+    unknown_districts: list[UUID] | None = None
+    disabled_districts: list[UUID] | None = None
 
 
 class ErrorResponse(BaseModel):

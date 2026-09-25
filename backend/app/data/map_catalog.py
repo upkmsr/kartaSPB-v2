@@ -5,8 +5,10 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Engine, text
+from sqlalchemy.sql.elements import TextClause
 
 from app.api.map_validation import BoundingBox
+from app.data.districts import validate_district_selection
 
 
 class UnknownCategoriesError(ValueError):
@@ -103,6 +105,106 @@ MAP_FEATURE_IDS_SPATIAL_FIRST_SQL = text(
     """
 )
 
+
+def _district_scope_cte(*, multiple: bool) -> str:
+    if multiple:
+        return """
+        selected_scope AS MATERIALIZED (
+            SELECT ST_UnaryUnion(ST_Collect(object.geom)) AS geom
+            FROM domain.districts AS district
+            JOIN catalog.objects AS object ON object.id=district.canonical_object_id
+            WHERE district.id=ANY(:district_ids)
+              AND district.enabled
+              AND object.lifecycle_status='active'
+        )
+        """
+    return """
+        selected_scope AS MATERIALIZED (
+            SELECT object.geom
+            FROM domain.districts AS district
+            JOIN catalog.objects AS object ON object.id=district.canonical_object_id
+            WHERE district.id=:district_id
+              AND district.enabled
+              AND object.lifecycle_status='active'
+        )
+    """
+
+
+def _district_feature_ids_sql(*, spatial_first: bool, multiple: bool) -> TextClause:
+    scope = _district_scope_cte(multiple=multiple)
+    if spatial_first:
+        return text(
+            f"""
+            WITH envelope AS (
+                SELECT ST_MakeEnvelope(
+                    :min_lon, :min_lat, :max_lon, :max_lat, 4326
+                ) AS geom
+            ), {scope}, spatial_objects AS MATERIALIZED (
+                SELECT object.id
+                FROM catalog.objects AS object
+                CROSS JOIN envelope
+                CROSS JOIN selected_scope AS scope
+                WHERE object.lifecycle_status='active'
+                  AND object.geom && envelope.geom
+                  AND ST_Intersects(object.geom,envelope.geom)
+                  AND object.geom && scope.geom
+                  AND ST_Intersects(object.geom,scope.geom)
+            )
+            SELECT candidate.id
+            FROM spatial_objects AS candidate
+            WHERE EXISTS (
+                SELECT 1
+                FROM catalog.object_categories AS category
+                WHERE category.object_id=candidate.id
+                  AND category.lifecycle_status='active'
+                  AND category.category_key=ANY(:categories)
+            )
+            LIMIT :fetch_limit
+            """
+        )
+    return text(
+        f"""
+        WITH {scope}, category_ids AS MATERIALIZED (
+            SELECT DISTINCT category.object_id
+            FROM catalog.object_categories AS category
+            WHERE category.lifecycle_status='active'
+              AND category.category_key=ANY(:categories)
+        ), category_objects AS MATERIALIZED (
+            SELECT object.id,object.geom
+            FROM category_ids AS candidate
+            JOIN catalog.objects AS object ON object.id=candidate.object_id
+            WHERE object.lifecycle_status='active'
+        ), envelope AS (
+            SELECT ST_MakeEnvelope(
+                :min_lon, :min_lat, :max_lon, :max_lat, 4326
+            ) AS geom
+        )
+        SELECT object.id
+        FROM category_objects AS object
+        CROSS JOIN envelope
+        CROSS JOIN selected_scope AS scope
+        WHERE object.geom && envelope.geom
+          AND ST_Intersects(object.geom,envelope.geom)
+          AND object.geom && scope.geom
+          AND ST_Intersects(object.geom,scope.geom)
+        LIMIT :fetch_limit
+        """
+    )
+
+
+MAP_FEATURE_IDS_ONE_DISTRICT_CATEGORY_FIRST_SQL = _district_feature_ids_sql(
+    spatial_first=False, multiple=False
+)
+MAP_FEATURE_IDS_ONE_DISTRICT_SPATIAL_FIRST_SQL = _district_feature_ids_sql(
+    spatial_first=True, multiple=False
+)
+MAP_FEATURE_IDS_MULTI_DISTRICT_CATEGORY_FIRST_SQL = _district_feature_ids_sql(
+    spatial_first=False, multiple=True
+)
+MAP_FEATURE_IDS_MULTI_DISTRICT_SPATIAL_FIRST_SQL = _district_feature_ids_sql(
+    spatial_first=True, multiple=True
+)
+
 MAP_FEATURE_PAYLOAD_SQL = text(
     """
     SELECT object.id,
@@ -170,7 +272,11 @@ class MapCatalogService:
         self.engine = engine
 
     def features(
-        self, bbox: BoundingBox, categories: tuple[str, ...], limit: int
+        self,
+        bbox: BoundingBox,
+        categories: tuple[str, ...],
+        limit: int,
+        district_ids: tuple[UUID, ...] = (),
     ) -> list[MapFeatureData]:
         with self.engine.connect() as connection:
             enabled: set[str] = set(
@@ -185,21 +291,41 @@ class MapCatalogService:
             unknown = sorted(set(categories) - enabled)
             if unknown:
                 raise UnknownCategoriesError(unknown)
-            feature_ids_sql = (
-                MAP_FEATURE_IDS_SPATIAL_FIRST_SQL
-                if "transport.road" in categories
-                else MAP_FEATURE_IDS_CATEGORY_FIRST_SQL
-            )
+            validate_district_selection(connection, district_ids)
+            spatial_first = "transport.road" in categories
+            if not district_ids:
+                feature_ids_sql = (
+                    MAP_FEATURE_IDS_SPATIAL_FIRST_SQL
+                    if spatial_first
+                    else MAP_FEATURE_IDS_CATEGORY_FIRST_SQL
+                )
+            elif len(district_ids) == 1:
+                feature_ids_sql = (
+                    MAP_FEATURE_IDS_ONE_DISTRICT_SPATIAL_FIRST_SQL
+                    if spatial_first
+                    else MAP_FEATURE_IDS_ONE_DISTRICT_CATEGORY_FIRST_SQL
+                )
+            else:
+                feature_ids_sql = (
+                    MAP_FEATURE_IDS_MULTI_DISTRICT_SPATIAL_FIRST_SQL
+                    if spatial_first
+                    else MAP_FEATURE_IDS_MULTI_DISTRICT_CATEGORY_FIRST_SQL
+                )
+            parameters: dict[str, Any] = {
+                "min_lon": bbox.min_lon,
+                "min_lat": bbox.min_lat,
+                "max_lon": bbox.max_lon,
+                "max_lat": bbox.max_lat,
+                "categories": list(categories),
+                "fetch_limit": limit + 1,
+            }
+            if len(district_ids) == 1:
+                parameters["district_id"] = district_ids[0]
+            elif district_ids:
+                parameters["district_ids"] = list(district_ids)
             object_ids: Sequence[UUID] = connection.execute(
                 feature_ids_sql,
-                {
-                    "min_lon": bbox.min_lon,
-                    "min_lat": bbox.min_lat,
-                    "max_lon": bbox.max_lon,
-                    "max_lat": bbox.max_lat,
-                    "categories": list(categories),
-                    "fetch_limit": limit + 1,
-                },
+                parameters,
             ).scalars().all()
             if len(object_ids) > limit:
                 raise FeatureLimitExceededError(limit)

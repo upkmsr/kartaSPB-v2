@@ -1,3 +1,4 @@
+from app.api.schemas.districts import DistrictList, DistrictSummary
 from app.api.schemas.map import (
     ErrorDetail,
     ErrorResponse,
@@ -10,6 +11,8 @@ from app.api.schemas.map import (
 )
 
 __all__ = [
+    "DistrictList",
+    "DistrictSummary",
     "ErrorDetail",
     "ErrorResponse",
     "GeoJSONFeature",

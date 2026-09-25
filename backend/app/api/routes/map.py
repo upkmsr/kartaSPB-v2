@@ -3,7 +3,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.map_validation import MapRequestValidationError, parse_bbox, parse_categories
+from app.api.map_validation import (
+    MapRequestValidationError,
+    parse_bbox,
+    parse_categories,
+    parse_districts,
+)
 from app.api.schemas import (
     ErrorDetail,
     ErrorResponse,
@@ -13,6 +18,7 @@ from app.api.schemas import (
     ObjectDetail,
     SourceSummary,
 )
+from app.data.districts import UnknownDistrictsError
 from app.data.map_catalog import (
     FeatureLimitExceededError,
     MapCatalogService,
@@ -30,7 +36,7 @@ def get_map_catalog_service() -> MapCatalogService:
 def _error(detail: ErrorDetail) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        detail=detail.model_dump(exclude_none=True),
+        detail=detail.model_dump(mode="json", exclude_none=True),
     )
 
 
@@ -43,15 +49,24 @@ def map_features(
     service: Annotated[MapCatalogService, Depends(get_map_catalog_service)],
     bbox: Annotated[str, Query(description="minLon,minLat,maxLon,maxLat")],
     categories: Annotated[str, Query(description="Comma-separated category keys")],
+    districts: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Optional comma-separated domain district UUIDs. Duplicate IDs are normalized."
+            )
+        ),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=5000)] = 1000,
 ) -> GeoJSONFeatureCollection:
     try:
         parsed_bbox = parse_bbox(bbox)
         parsed_categories = parse_categories(categories)
+        parsed_districts = parse_districts(districts)
     except MapRequestValidationError as exc:
         raise _error(ErrorDetail(code="invalid_request", message=str(exc))) from exc
     try:
-        features = service.features(parsed_bbox, parsed_categories, limit)
+        features = service.features(parsed_bbox, parsed_categories, limit, parsed_districts)
     except UnknownCategoriesError as exc:
         raise _error(
             ErrorDetail(
@@ -67,6 +82,15 @@ def map_features(
                 message="The viewport contains more features than the requested limit",
                 requested_limit=exc.requested_limit,
                 suggestion="zoom_in_or_disable_layers",
+            )
+        ) from exc
+    except UnknownDistrictsError as exc:
+        raise _error(
+            ErrorDetail(
+                code="unknown_district",
+                message="One or more districts are unknown or disabled",
+                unknown_districts=exc.unknown or None,
+                disabled_districts=exc.disabled or None,
             )
         ) from exc
     return GeoJSONFeatureCollection(

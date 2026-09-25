@@ -1,10 +1,12 @@
 import math
 from dataclasses import dataclass
+from uuid import UUID
 
 MAX_LONGITUDE_SPAN = 0.5
 MAX_LATITUDE_SPAN = 0.3
 MAX_BBOX_AREA = 0.1
 MAX_CATEGORY_COUNT = 10
+MAX_DISTRICT_COUNT = 18
 
 
 class MapRequestValidationError(ValueError):
@@ -65,3 +67,21 @@ def parse_categories(value: str) -> tuple[str, ...]:
             f"categories must contain between 1 and {MAX_CATEGORY_COUNT} keys"
         )
     return tuple(dict.fromkeys(raw_categories))
+
+
+def parse_districts(value: str | None) -> tuple[UUID, ...]:
+    if value is None:
+        return ()
+    raw_ids = [part.strip() for part in value.split(",")]
+    if any(not item for item in raw_ids):
+        raise MapRequestValidationError("districts must not contain empty IDs")
+    try:
+        district_ids = tuple(UUID(item) for item in raw_ids)
+    except ValueError as exc:
+        raise MapRequestValidationError("districts must contain valid UUIDs") from exc
+    unique_ids = tuple(dict.fromkeys(district_ids))
+    if len(unique_ids) > MAX_DISTRICT_COUNT:
+        raise MapRequestValidationError(
+            f"districts must contain no more than {MAX_DISTRICT_COUNT} unique IDs"
+        )
+    return unique_ids
