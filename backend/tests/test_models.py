@@ -2,6 +2,7 @@ from app.db.models import (
     CatalogObject,
     CatalogRelationship,
     DatasetSource,
+    District,
     ImportRun,
     ImportRunStatus,
     ObjectSource,
@@ -70,4 +71,18 @@ def test_catalog_models_use_provider_independent_schema() -> None:
         "first_seen_import_run_id",
         "last_seen_import_run_id",
         "last_changed_import_run_id",
+    }
+
+
+def test_district_model_keeps_geometry_in_catalog() -> None:
+    assert District.__table__.schema == "domain"
+    assert {column.name for column in District.__table__.columns} == {
+        "id",
+        "canonical_object_id",
+        "name",
+        "slug",
+        "display_order",
+        "enabled",
+        "created_at",
+        "updated_at",
     }

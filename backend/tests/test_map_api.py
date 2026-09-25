@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 
 from app.api.routes.map import get_map_catalog_service
+from app.data.districts import UnknownDistrictsError
 from app.data.map_catalog import (
     FeatureLimitExceededError,
     MapFeatureData,
@@ -18,6 +19,7 @@ class FakeMapService:
     def __init__(self) -> None:
         self.limit: int | None = None
         self.categories: tuple[str, ...] | None = None
+        self.district_ids: tuple[UUID, ...] | None = None
         self.feature = MapFeatureData(
             id=UUID("c49e54e1-3481-4b07-9f81-0b161b57b62b"),
             name="Озерки",
@@ -26,9 +28,16 @@ class FakeMapService:
             categories=["healthcare.pharmacy", "transport.stop"],
         )
 
-    def features(self, bbox: Any, categories: tuple[str, ...], limit: int) -> list[MapFeatureData]:
+    def features(
+        self,
+        bbox: Any,
+        categories: tuple[str, ...],
+        limit: int,
+        district_ids: tuple[UUID, ...] = (),
+    ) -> list[MapFeatureData]:
         self.limit = limit
         self.categories = categories
+        self.district_ids = district_ids
         return [self.feature]
 
     def object_detail(self, object_id: UUID) -> ObjectDetailData | None:
@@ -70,6 +79,7 @@ def test_map_features_contract_default_limit_and_multiple_categories(client: Tes
     assert response.status_code == 200
     assert service.limit == 1000
     assert service.categories == ("healthcare.pharmacy", "transport.stop")
+    assert service.district_ids == ()
     assert response.json() == {
         "type": "FeatureCollection",
         "features": [
@@ -113,11 +123,36 @@ def test_map_features_accepts_max_limit_and_rejects_invalid_limit(client: TestCl
     assert zero.status_code == 422
 
 
+def test_map_features_parses_districts_and_normalizes_duplicates(client: TestClient) -> None:
+    service = FakeMapService()
+    app.dependency_overrides[get_map_catalog_service] = lambda: service
+    district_id = UUID("161ba369-c548-5569-9cc2-679522090220")
+    try:
+        response = client.get(
+            "/api/map/features",
+            params={
+                "bbox": "30,59,30.1,59.1",
+                "categories": "nature.park",
+                "districts": f"{district_id},{district_id}",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert service.district_ids == (district_id,)
+
+
 def test_map_errors_are_machine_readable(client: TestClient) -> None:
     class UnknownService(FakeMapService):
         def features(
-            self, bbox: Any, categories: tuple[str, ...], limit: int
+            self,
+            bbox: Any,
+            categories: tuple[str, ...],
+            limit: int,
+            district_ids: tuple[UUID, ...] = (),
         ) -> list[MapFeatureData]:
+            del district_ids
             raise UnknownCategoriesError(["unknown"])
 
     app.dependency_overrides[get_map_catalog_service] = UnknownService
@@ -133,8 +168,13 @@ def test_map_errors_are_machine_readable(client: TestClient) -> None:
 
     class LimitedService(FakeMapService):
         def features(
-            self, bbox: Any, categories: tuple[str, ...], limit: int
+            self,
+            bbox: Any,
+            categories: tuple[str, ...],
+            limit: int,
+            district_ids: tuple[UUID, ...] = (),
         ) -> list[MapFeatureData]:
+            del district_ids
             raise FeatureLimitExceededError(limit)
 
     app.dependency_overrides[get_map_catalog_service] = LimitedService
@@ -158,6 +198,38 @@ def test_map_errors_are_machine_readable(client: TestClient) -> None:
     }
     assert invalid_bbox.status_code == 422
     assert invalid_bbox.json()["detail"]["code"] == "invalid_request"
+
+    district_id = UUID("161ba369-c548-5569-9cc2-679522090220")
+
+    class UnknownDistrictService(FakeMapService):
+        def features(
+            self,
+            bbox: Any,
+            categories: tuple[str, ...],
+            limit: int,
+            district_ids: tuple[UUID, ...] = (),
+        ) -> list[MapFeatureData]:
+            del bbox, categories, limit, district_ids
+            raise UnknownDistrictsError([district_id], [])
+
+    app.dependency_overrides[get_map_catalog_service] = UnknownDistrictService
+    try:
+        unknown_district = client.get(
+            "/api/map/features",
+            params={
+                "bbox": "30,59,30.1,59.1",
+                "categories": "nature.park",
+                "districts": str(district_id),
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert unknown_district.status_code == 422
+    assert unknown_district.json()["detail"] == {
+        "code": "unknown_district",
+        "message": "One or more districts are unknown or disabled",
+        "unknown_districts": [str(district_id)],
+    }
 
 
 def test_object_detail_contract_not_found_and_invalid_uuid(client: TestClient) -> None:
