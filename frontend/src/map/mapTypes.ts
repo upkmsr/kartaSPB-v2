@@ -93,6 +93,11 @@ export type MapBounds = {
   maxLat: number;
 };
 
+export type MapNavigationRequest = {
+  sequence: number;
+  bbox: [number, number, number, number];
+};
+
 export type MapRequestState =
   | { status: "idle" }
   | { status: "loading" }

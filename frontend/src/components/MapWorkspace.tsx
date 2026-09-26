@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapView } from "../map/MapView";
 import { fetchObjectDetail, MapApiError } from "../map/mapApi";
-import type { MapRequestState, ObjectCardState } from "../map/mapTypes";
+import type {
+  MapNavigationRequest,
+  MapRequestState,
+  ObjectCardState,
+} from "../map/mapTypes";
 import { ObjectCard } from "./ObjectCard";
 
 export type MapWorkspaceProps = {
   visibleLayerIds: ReadonlySet<string>;
+  districtIds: readonly string[];
+  navigationRequest: MapNavigationRequest | null;
   onZoomChange: (zoom: number) => void;
 };
 
@@ -32,7 +38,12 @@ const RequestStatus = ({ state }: { state: MapRequestState }) => {
   );
 };
 
-export function MapWorkspace({ visibleLayerIds, onZoomChange }: MapWorkspaceProps) {
+export function MapWorkspace({
+  visibleLayerIds,
+  districtIds,
+  navigationRequest,
+  onZoomChange,
+}: MapWorkspaceProps) {
   const [requestState, setRequestState] = useState<MapRequestState>({ status: "idle" });
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [cardState, setCardState] = useState<ObjectCardState>({ status: "closed" });
@@ -71,12 +82,21 @@ export function MapWorkspace({ visibleLayerIds, onZoomChange }: MapWorkspaceProp
     setSelectedFeatureId(null);
   }, []);
 
+  const handleVisibleFeatureIds = useCallback((visibleIds: ReadonlySet<string>) => {
+    setSelectedFeatureId((selectedId) =>
+      selectedId !== null && !visibleIds.has(selectedId) ? null : selectedId,
+    );
+  }, []);
+
   return (
     <main className="map-workspace" aria-label="Рабочая область карты">
       <MapView
         visibleLayerIds={visibleLayerIds}
+        districtIds={districtIds}
+        navigationRequest={navigationRequest}
         selectedFeatureId={selectedFeatureId}
         onFeatureSelect={setSelectedFeatureId}
+        onVisibleFeatureIdsChange={handleVisibleFeatureIds}
         onRequestStateChange={setRequestState}
         onZoomChange={onZoomChange}
       />

@@ -16,6 +16,7 @@ const MAX_BBOX_AREA = 0.1;
 export type MapFeatureRequest = {
   bounds: MapBounds;
   categories: string[];
+  districtIds?: string[];
   limit?: number;
 };
 
@@ -122,6 +123,7 @@ export const guardBbox = (bounds: MapBounds): BboxGuardResult => {
 export const buildMapFeaturesUrl = ({
   bounds,
   categories,
+  districtIds = [],
   limit = 5000,
 }: MapFeatureRequest): string => {
   const guard = guardBbox(bounds);
@@ -133,6 +135,7 @@ export const buildMapFeaturesUrl = ({
     categories: categories.join(","),
     limit: String(limit),
   });
+  if (districtIds.length > 0) params.set("districts", districtIds.join(","));
   return `${apiBaseUrl}/api/map/features?${params.toString()}`;
 };
 

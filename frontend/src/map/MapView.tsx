@@ -19,6 +19,7 @@ import { guardBbox, LatestMapRequest, MapApiError } from "./mapApi";
 import {
   EMPTY_FEATURE_COLLECTION,
   type CatalogFeatureCollection,
+  type MapNavigationRequest,
   type MapRequestState,
 } from "./mapTypes";
 
@@ -52,8 +53,11 @@ const basemapAttribution = primaryStyleUrl === DEFAULT_STYLE_URL ? BASEMAP_ATTRI
 
 export type MapViewProps = {
   visibleLayerIds: ReadonlySet<string>;
+  districtIds: readonly string[];
+  navigationRequest: MapNavigationRequest | null;
   selectedFeatureId: string | null;
   onFeatureSelect: (objectId: string) => void;
+  onVisibleFeatureIdsChange: (visibleIds: ReadonlySet<string>) => void;
   onRequestStateChange: (state: MapRequestState) => void;
   onZoomChange: (zoom: number) => void;
 };
@@ -143,16 +147,21 @@ const updateSelectionFilters = (map: MapLibreMap, selectedId: string | null): vo
 
 export function MapView({
   visibleLayerIds,
+  districtIds,
+  navigationRequest,
   selectedFeatureId,
   onFeatureSelect,
+  onVisibleFeatureIdsChange,
   onRequestStateChange,
   onZoomChange,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const visibleLayerIdsRef = useRef(visibleLayerIds);
+  const districtIdsRef = useRef(districtIds);
   const selectedFeatureIdRef = useRef(selectedFeatureId);
   const onFeatureSelectRef = useRef(onFeatureSelect);
+  const onVisibleFeatureIdsChangeRef = useRef(onVisibleFeatureIdsChange);
   const onRequestStateChangeRef = useRef(onRequestStateChange);
   const onZoomChangeRef = useRef(onZoomChange);
   const latestDataRef = useRef<CatalogFeatureCollection>(EMPTY_FEATURE_COLLECTION);
@@ -161,8 +170,10 @@ export function MapView({
   const loadViewportRef = useRef<(delay?: number) => void>(() => undefined);
 
   visibleLayerIdsRef.current = visibleLayerIds;
+  districtIdsRef.current = districtIds;
   selectedFeatureIdRef.current = selectedFeatureId;
   onFeatureSelectRef.current = onFeatureSelect;
+  onVisibleFeatureIdsChangeRef.current = onVisibleFeatureIdsChange;
   onRequestStateChangeRef.current = onRequestStateChange;
   onZoomChangeRef.current = onZoomChange;
 
@@ -233,10 +244,18 @@ export function MapView({
         const startedAt = performance.now();
         onRequestStateChangeRef.current({ status: "loading" });
         void requestRef.current.run(
-          { bounds: requestBounds, categories, limit: 5000 },
+          {
+            bounds: requestBounds,
+            categories,
+            districtIds: [...districtIdsRef.current],
+            limit: 5000,
+          },
           (collection) => {
             latestDataRef.current = collection;
             setSourceData(collection);
+            onVisibleFeatureIdsChangeRef.current(
+              new Set(collection.features.map((feature) => feature.properties.canonical_id)),
+            );
             const durationMs = performance.now() - startedAt;
             onRequestStateChangeRef.current(
               collection.features.length === 0
@@ -327,6 +346,23 @@ export function MapView({
     }
     loadViewportRef.current(0);
   }, [visibleLayerIds]);
+
+  useEffect(() => {
+    loadViewportRef.current(0);
+  }, [districtIds]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || navigationRequest === null) return;
+    const [minLon, minLat, maxLon, maxLat] = navigationRequest.bbox;
+    map.fitBounds(
+      [
+        [minLon, minLat],
+        [maxLon, maxLat],
+      ],
+      { padding: 48, duration: 700 },
+    );
+  }, [navigationRequest]);
 
   useEffect(() => {
     const map = mapRef.current;

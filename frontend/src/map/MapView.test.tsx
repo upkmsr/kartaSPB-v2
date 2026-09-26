@@ -16,6 +16,8 @@ type MockMapInstance = {
   bounds: { west: number; south: number; east: number; north: number };
   emit: (event: string, value?: unknown) => void;
   setLayoutProperty: ReturnType<typeof vi.fn>;
+  fitBounds: ReturnType<typeof vi.fn>;
+  resize: ReturnType<typeof vi.fn>;
 };
 
 const mapMock = vi.hoisted(() => ({ instances: [] as MockMapInstance[] }));
@@ -31,6 +33,8 @@ vi.mock("maplibre-gl", () => {
     zoom = 12;
     bounds = { west: 30.3, south: 59.93, east: 30.32, north: 59.945 };
     setLayoutProperty = vi.fn();
+    fitBounds = vi.fn();
+    resize = vi.fn();
 
     constructor() {
       mapMock.instances.push(this);
@@ -75,7 +79,6 @@ vi.mock("maplibre-gl", () => {
     getCanvas() {
       return this.canvas;
     }
-    resize() {}
     isStyleLoaded() {
       return true;
     }
@@ -130,8 +133,11 @@ describe("MapView MapLibre integration", () => {
     render(
       <MapView
         visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
         selectedFeatureId={null}
         onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
       />,
@@ -149,6 +155,7 @@ describe("MapView MapLibre integration", () => {
     expect(map.layers.has("road-line")).toBe(true);
     expect(map.layers.has("selection-point")).toBe(true);
     expect(map.source?.setData).toHaveBeenCalledWith(featureCollection);
+    expect(map.resize).toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledOnce();
     const requestUrl = new URL(String(fetchMock.mock.calls[0][0]), "http://localhost");
     expect(requestUrl.searchParams.get("categories")).toBe(
@@ -191,8 +198,11 @@ describe("MapView MapLibre integration", () => {
     render(
       <MapView
         visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
         selectedFeatureId={null}
         onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
       />,
@@ -221,8 +231,11 @@ describe("MapView MapLibre integration", () => {
     render(
       <MapView
         visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
         selectedFeatureId={null}
         onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={onRequestStateChange}
         onZoomChange={vi.fn()}
       />,
@@ -277,8 +290,11 @@ describe("MapView MapLibre integration", () => {
     render(
       <MapView
         visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
         selectedFeatureId={null}
         onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={onRequestStateChange}
         onZoomChange={vi.fn()}
       />,
@@ -314,8 +330,11 @@ describe("MapView MapLibre integration", () => {
     render(
       <MapView
         visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
         selectedFeatureId={null}
         onFeatureSelect={onFeatureSelect}
+        onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
       />,
@@ -334,6 +353,58 @@ describe("MapView MapLibre integration", () => {
 
     expect(onFeatureSelect).toHaveBeenCalledWith(
       "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+    );
+  });
+
+  it("reloads the existing pipeline with district UUIDs and fits requested bbox", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ type: "FeatureCollection", features: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const central = "161ba369-c548-5569-9cc2-679522090220";
+    const primorsky = "230bcc6e-fb6a-5172-afe6-81f0736fb77b";
+    const { rerender } = render(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
+        selectedFeatureId={null}
+        onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={vi.fn()}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+    expect(new URL(String(fetchMock.mock.calls[0][0]), "http://localhost").searchParams.has("districts"))
+      .toBe(false);
+
+    rerender(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[central, primorsky]}
+        navigationRequest={{ sequence: 1, bbox: [29.95, 59.91, 30.41, 60.07] }}
+        selectedFeatureId={null}
+        onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={vi.fn()}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+    await act(async () => vi.runAllTimersAsync());
+
+    const scopedUrl = new URL(String(fetchMock.mock.calls.at(-1)?.[0]), "http://localhost");
+    expect(scopedUrl.searchParams.get("districts")).toBe(`${central},${primorsky}`);
+    expect(map.fitBounds).toHaveBeenCalledWith(
+      [
+        [29.95, 59.91],
+        [30.41, 60.07],
+      ],
+      { padding: 48, duration: 700 },
     );
   });
 });

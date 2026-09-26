@@ -3,13 +3,22 @@ import { afterEach, expect, it, vi } from "vitest";
 import { MapWorkspace } from "./MapWorkspace";
 
 vi.mock("../map/MapView", () => ({
-  MapView: ({ onFeatureSelect }: { onFeatureSelect: (id: string) => void }) => (
+  MapView: ({
+    onFeatureSelect,
+    onVisibleFeatureIdsChange,
+  }: {
+    onFeatureSelect: (id: string) => void;
+    onVisibleFeatureIdsChange: (ids: ReadonlySet<string>) => void;
+  }) => (
     <>
       <button type="button" onClick={() => onFeatureSelect("c49e54e1-3481-4b07-9f81-0b161b57b62b")}>
         Выбрать аптеку
       </button>
       <button type="button" onClick={() => onFeatureSelect("0014437e-092b-479f-a006-10c926604682")}>
         Выбрать парк
+      </button>
+      <button type="button" onClick={() => onVisibleFeatureIdsChange(new Set())}>
+        Применить пустой scope
       </button>
     </>
   ),
@@ -32,7 +41,14 @@ it("loads object details after feature selection and closes the card", async () 
       { status: 200, headers: { "Content-Type": "application/json" } },
     ),
   );
-  render(<MapWorkspace visibleLayerIds={new Set()} onZoomChange={vi.fn()} />);
+  render(
+    <MapWorkspace
+      visibleLayerIds={new Set()}
+      districtIds={[]}
+      navigationRequest={null}
+      onZoomChange={vi.fn()}
+    />,
+  );
 
   fireEvent.click(screen.getByRole("button", { name: "Выбрать аптеку" }));
   expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -53,7 +69,14 @@ it("keeps the newest object card when an older details response arrives late", a
   vi.spyOn(globalThis, "fetch").mockImplementation(
     () => new Promise<Response>((resolve) => responses.push(resolve)),
   );
-  render(<MapWorkspace visibleLayerIds={new Set()} onZoomChange={vi.fn()} />);
+  render(
+    <MapWorkspace
+      visibleLayerIds={new Set()}
+      districtIds={[]}
+      navigationRequest={null}
+      onZoomChange={vi.fn()}
+    />,
+  );
 
   fireEvent.click(screen.getByRole("button", { name: "Выбрать аптеку" }));
   fireEvent.click(screen.getByRole("button", { name: "Выбрать парк" }));
@@ -94,4 +117,34 @@ it("keeps the newest object card when an older details response arrives late", a
 
   expect(screen.queryByRole("heading", { name: "Старая аптека" })).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Днепропетровский сквер" })).toBeInTheDocument();
+});
+
+it("clears a selected object after it disappears from the current scope", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        id: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+        name: "Озерки",
+        categories: ["healthcare.pharmacy"],
+        object_kind: "feature",
+        geometry_type: "Point",
+        properties: {},
+        sources: [],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+  render(
+    <MapWorkspace
+      visibleLayerIds={new Set()}
+      districtIds={["161ba369-c548-5569-9cc2-679522090220"]}
+      navigationRequest={null}
+      onZoomChange={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Выбрать аптеку" }));
+  await screen.findByRole("heading", { name: "Озерки" });
+  fireEvent.click(screen.getByRole("button", { name: "Применить пустой scope" }));
+  expect(screen.queryByLabelText("Карточка объекта")).not.toBeInTheDocument();
 });

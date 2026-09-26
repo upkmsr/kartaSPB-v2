@@ -4,7 +4,34 @@ The FOUNDATION 4B desktop map starts at Saint Petersburg (`30.3158, 59.9398`,
 zoom 12) and reads only the generic FOUNDATION 4A endpoints:
 
 - `GET /api/map/features` for the current bounded viewport;
-- `GET /api/objects/{uuid}` for a selected canonical object.
+- `GET /api/objects/{uuid}` for a selected canonical object;
+- `GET /api/districts` for the authoritative 18-district control list.
+
+## Desktop shell and district scope
+
+The permanent left control panel is 320 px wide when expanded and 56 px when
+collapsed. It contains the district multi-select and the unchanged Layer Registry
+controls; the existing minimum supported viewport remains 1280 px. Opening an object
+adds the existing 360 px ObjectCard as a right column. The center map stays fluid, and
+its `ResizeObserver` calls `map.resize()` after either side changes width.
+
+The district section is a keyboard-accessible accordion independent of the whole panel.
+Collapsing it only hides its rows: selected UUIDs and map scope remain unchanged and the
+checkboxes restore their state when reopened. The panel header stays outside a dedicated
+vertical scroll area, so all 18 district rows and every layer control remain reachable at
+1280×800 without page or horizontal scrolling.
+
+District rows come exclusively from `GET /api/districts` and use domain UUIDs as
+identity. Zero selections means unrestricted district scope and omits the `districts`
+query parameter. One or more selections add one comma-separated `districts` value to
+the existing bounded map request; bbox, categories, limit, debounce, cancellation, and
+stale-response protection are unchanged. No per-district feature requests are made.
+
+Checkboxes change the exact backend scope without moving the map. Each row has a
+separate locate action using its public bbox, while “Показать выбранные” computes one
+client-side bbox union and calls `fitBounds` once. This union is navigation only; exact
+spatial filtering remains a backend geometry intersection. If a successful scoped map
+response no longer contains the selected object, its highlight and ObjectCard close.
 
 ## Layer and request lifecycle
 
@@ -36,8 +63,9 @@ the catalog source, render layers, and most recent FeatureCollection.
 Clicking an interactive render layer uses the GeoJSON feature's canonical UUID,
 loads the public object-details endpoint with abort/stale protection, highlights
 the selected geometry, and shows only canonical properties and compact source
-summaries. Search, attribute filters, routing, drawing, district scope, and user
-data remain outside FOUNDATION 4B.
+summaries. Search, attribute filters, routing, drawing, and user data remain outside
+FOUNDATION 4B. District scope is added by FOUNDATION 5B1; search UI
+remains deferred to FOUNDATION 5B2.
 
 The production build imports and emits the MapLibre worker as a dedicated
 JavaScript asset, then configures its URL before constructing the map. The build
@@ -62,7 +90,6 @@ PMTiles, and a tile server are intentionally not introduced in FOUNDATION 4.
   exhaustive for all OSM water semantics. Detailed river/water semantic
   enrichment is deferred to a dedicated data-enrichment stage; no geometry is
   hand-drawn and there is no Neva-specific exception.
-- The generic `boundary.administrative` layer is a technical baseline, not an
-  authoritative representation of the exact 18 Saint Petersburg districts.
-  Exact district semantics and the authoritative/derived district registry are
-  deferred to FOUNDATION 5.
+- The generic `boundary.administrative` layer remains a technical baseline and is not
+  used as district identity. The separate `domain.districts` registry supplies the
+  authoritative 18 selectable application districts.
