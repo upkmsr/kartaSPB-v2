@@ -17,6 +17,7 @@ type MockMapInstance = {
   emit: (event: string, value?: unknown) => void;
   setLayoutProperty: ReturnType<typeof vi.fn>;
   fitBounds: ReturnType<typeof vi.fn>;
+  flyTo: ReturnType<typeof vi.fn>;
   resize: ReturnType<typeof vi.fn>;
 };
 
@@ -34,6 +35,7 @@ vi.mock("maplibre-gl", () => {
     bounds = { west: 30.3, south: 59.93, east: 30.32, north: 59.945 };
     setLayoutProperty = vi.fn();
     fitBounds = vi.fn();
+    flyTo = vi.fn();
     resize = vi.fn();
 
     constructor() {
@@ -387,7 +389,11 @@ describe("MapView MapLibre integration", () => {
       <MapView
         visibleLayerIds={defaultVisibleLayerIds()}
         districtIds={[central, primorsky]}
-        navigationRequest={{ sequence: 1, bbox: [29.95, 59.91, 30.41, 60.07] }}
+        navigationRequest={{
+          sequence: 1,
+          kind: "bbox",
+          bbox: [29.95, 59.91, 30.41, 60.07],
+        }}
         selectedFeatureId={null}
         onFeatureSelect={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
@@ -404,7 +410,46 @@ describe("MapView MapLibre integration", () => {
         [29.95, 59.91],
         [30.41, 60.07],
       ],
-      { padding: 48, duration: 700 },
+      { padding: 56, duration: 700, maxZoom: 17 },
     );
+  });
+
+  it("flies to a point search navigation target", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ type: "FeatureCollection", features: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const { rerender } = render(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
+        selectedFeatureId={null}
+        onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={vi.fn()}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+
+    rerender(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={{ sequence: 2, kind: "point", center: [30.3, 59.9], zoom: 16 }}
+        selectedFeatureId={null}
+        onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={vi.fn()}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+
+    expect(map.flyTo).toHaveBeenCalledWith({ center: [30.3, 59.9], zoom: 16, duration: 700 });
   });
 });

@@ -5,7 +5,8 @@ zoom 12) and reads only the generic FOUNDATION 4A endpoints:
 
 - `GET /api/map/features` for the current bounded viewport;
 - `GET /api/objects/{uuid}` for a selected canonical object;
-- `GET /api/districts` for the authoritative 18-district control list.
+- `GET /api/districts` for the authoritative 18-district control list;
+- `GET /api/search` for canonical name search in the active user scope.
 
 ## Desktop shell and district scope
 
@@ -32,6 +33,32 @@ separate locate action using its public bbox, while “Показать выбр
 client-side bbox union and calls `fitBounds` once. This union is navigation only; exact
 spatial filtering remains a backend geometry intersection. If a successful scoped map
 response no longer contains the selected object, its highlight and ObjectCard close.
+
+## Catalog search
+
+The expanded sidebar keeps Search above Districts and Layers. Input stays local until
+the normalized query contains at least three characters, then waits 250 ms before one
+`GET /api/search` request. Clearing the input cancels the active request, clears only
+the result list, and leaves districts, layers, map position, and ObjectCard unchanged.
+Every new query or scope aborts the previous request and advances a monotonically
+increasing token, so an older response cannot replace current results.
+
+Search reuses the selected district UUIDs as exact backend spatial scope. It also sends
+the category keys of enabled Layer Registry entries, independently of their map
+`minZoom`: layer switches are the user's category filter, while zoom thresholds are
+only map rendering and performance rules. With every layer disabled, search makes no
+request and asks the user to enable a layer. Category labels in results come from the
+same registry; no second label map or client-side fuzzy/ranking logic exists.
+
+Point results navigate with `flyTo`; LineString, Polygon, and MultiPolygon results use
+their API bbox with `fitBounds`, falling back to the representative point for a
+degenerate bbox. Activating a result stores its canonical UUID in the same selection
+state as a map click and opens the existing `GET /api/objects/{uuid}` ObjectCard flow.
+A search-selected object remains valid even when it is not present in the current
+viewport GeoJSON; selection highlighting simply appears when that feature is available.
+Arrow keys move between result buttons, Enter activates one, and Escape closes the
+result list and returns focus to the input. Results are bounded to an internal scroll
+area so Districts and Layers remain reachable through the sidebar scroll.
 
 ## Layer and request lifecycle
 
@@ -63,9 +90,9 @@ the catalog source, render layers, and most recent FeatureCollection.
 Clicking an interactive render layer uses the GeoJSON feature's canonical UUID,
 loads the public object-details endpoint with abort/stale protection, highlights
 the selected geometry, and shows only canonical properties and compact source
-summaries. Search, attribute filters, routing, drawing, and user data remain outside
-FOUNDATION 4B. District scope is added by FOUNDATION 5B1; search UI
-remains deferred to FOUNDATION 5B2.
+summaries. Search result clicks reuse that same flow; routing, drawing, and user data
+remain outside the current scope. District scope was added by FOUNDATION 5B1 and
+search UI by FOUNDATION 5B2.
 
 The production build imports and emits the MapLibre worker as a dedicated
 JavaScript asset, then configures its URL before constructing the map. The build

@@ -214,6 +214,11 @@ export const activeCategoryKeys = (visibleLayerIds: ReadonlySet<string>, zoom: n
     ),
   );
 
+export const enabledCategoryKeys = (visibleLayerIds: ReadonlySet<string>): string[] =>
+  layerRegistry
+    .filter((layer) => visibleLayerIds.has(layer.id))
+    .map((layer) => layer.categoryKey);
+
 export const renderLayerIds = layerRegistry.flatMap((layer) =>
   layer.renderDefinitions.map((definition) => definition.id),
 );

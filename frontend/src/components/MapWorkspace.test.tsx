@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { MapWorkspace } from "./MapWorkspace";
 
@@ -26,6 +27,25 @@ vi.mock("../map/MapView", () => ({
 
 afterEach(() => vi.restoreAllMocks());
 
+const WorkspaceHarness = ({
+  initialSelection = null,
+}: {
+  initialSelection?: { id: string; origin: "map" | "search" } | null;
+}) => {
+  const [selection, setSelection] = useState(initialSelection);
+  return (
+    <MapWorkspace
+      visibleLayerIds={new Set()}
+      districtIds={[]}
+      navigationRequest={null}
+      objectSelection={selection}
+      onObjectSelect={(id) => setSelection({ id, origin: "map" })}
+      onObjectClose={() => setSelection(null)}
+      onZoomChange={vi.fn()}
+    />
+  );
+};
+
 it("loads object details after feature selection and closes the card", async () => {
   vi.spyOn(globalThis, "fetch").mockResolvedValue(
     new Response(
@@ -41,14 +61,7 @@ it("loads object details after feature selection and closes the card", async () 
       { status: 200, headers: { "Content-Type": "application/json" } },
     ),
   );
-  render(
-    <MapWorkspace
-      visibleLayerIds={new Set()}
-      districtIds={[]}
-      navigationRequest={null}
-      onZoomChange={vi.fn()}
-    />,
-  );
+  render(<WorkspaceHarness />);
 
   fireEvent.click(screen.getByRole("button", { name: "Выбрать аптеку" }));
   expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -69,14 +82,7 @@ it("keeps the newest object card when an older details response arrives late", a
   vi.spyOn(globalThis, "fetch").mockImplementation(
     () => new Promise<Response>((resolve) => responses.push(resolve)),
   );
-  render(
-    <MapWorkspace
-      visibleLayerIds={new Set()}
-      districtIds={[]}
-      navigationRequest={null}
-      onZoomChange={vi.fn()}
-    />,
-  );
+  render(<WorkspaceHarness />);
 
   fireEvent.click(screen.getByRole("button", { name: "Выбрать аптеку" }));
   fireEvent.click(screen.getByRole("button", { name: "Выбрать парк" }));
@@ -134,17 +140,39 @@ it("clears a selected object after it disappears from the current scope", async 
       { status: 200, headers: { "Content-Type": "application/json" } },
     ),
   );
-  render(
-    <MapWorkspace
-      visibleLayerIds={new Set()}
-      districtIds={["161ba369-c548-5569-9cc2-679522090220"]}
-      navigationRequest={null}
-      onZoomChange={vi.fn()}
-    />,
-  );
+  render(<WorkspaceHarness />);
 
   fireEvent.click(screen.getByRole("button", { name: "Выбрать аптеку" }));
   await screen.findByRole("heading", { name: "Озерки" });
   fireEvent.click(screen.getByRole("button", { name: "Применить пустой scope" }));
   expect(screen.queryByLabelText("Карточка объекта")).not.toBeInTheDocument();
+});
+
+it("keeps a search-selected object when it is absent from viewport GeoJSON", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        id: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+        name: "Озерки",
+        categories: ["healthcare.pharmacy"],
+        object_kind: "feature",
+        geometry_type: "Point",
+        properties: {},
+        sources: [],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+  render(
+    <WorkspaceHarness
+      initialSelection={{
+        id: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+        origin: "search",
+      }}
+    />,
+  );
+
+  await screen.findByRole("heading", { name: "Озерки" });
+  fireEvent.click(screen.getByRole("button", { name: "Применить пустой scope" }));
+  expect(screen.getByRole("heading", { name: "Озерки" })).toBeInTheDocument();
 });

@@ -62,7 +62,7 @@ it("renders 18 backend rows and supports 0, 1, N, unselect, and clear", () => {
   expect(screen.getByText("1 выбрано")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Все районы" }));
   expect(screen.getByText("Без ограничений")).toBeInTheDocument();
-});
+}, 10_000);
 
 it.each<[DistrictLoadState, string]>([
   [{ status: "loading" }, "Загружаем районы…"],

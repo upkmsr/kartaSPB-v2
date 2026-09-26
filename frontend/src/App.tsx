@@ -6,14 +6,18 @@ import {
   type DistrictBbox,
 } from "./api/districts";
 import { fetchReadiness } from "./api/health";
+import type { SearchResult } from "./api/search";
 import type { DistrictLoadState } from "./components/DistrictSection";
 import { MapWorkspace } from "./components/MapWorkspace";
 import { Sidebar } from "./components/Sidebar";
-import { defaultVisibleLayerIds } from "./map/layerRegistry";
-import type { MapNavigationRequest } from "./map/mapTypes";
+import { defaultVisibleLayerIds, enabledCategoryKeys } from "./map/layerRegistry";
+import { searchResultNavigation } from "./map/searchNavigation";
+import type { MapNavigationRequest, MapNavigationTarget } from "./map/mapTypes";
 
 type ConnectionState = "checking" | "ready" | "offline";
 const INITIAL_ZOOM = 12;
+
+type ObjectSelection = { id: string; origin: "map" | "search" };
 
 export function App() {
   const [backend, setBackend] = useState<ConnectionState>("checking");
@@ -27,6 +31,7 @@ export function App() {
   const [districtRetry, setDistrictRetry] = useState(0);
   const [selectedDistrictIds, setSelectedDistrictIds] = useState<Set<string>>(new Set());
   const [navigationRequest, setNavigationRequest] = useState<MapNavigationRequest | null>(null);
+  const [objectSelection, setObjectSelection] = useState<ObjectSelection | null>(null);
   const navigationSequenceRef = useRef(0);
 
   useEffect(() => {
@@ -76,8 +81,12 @@ export function App() {
     });
   };
 
+  const navigate = (target: MapNavigationTarget) => {
+    setNavigationRequest({ sequence: ++navigationSequenceRef.current, ...target });
+  };
+
   const navigateToBbox = (bbox: DistrictBbox) => {
-    setNavigationRequest({ sequence: ++navigationSequenceRef.current, bbox });
+    navigate({ kind: "bbox", bbox });
   };
 
   const selectedDistricts = useMemo(() => {
@@ -86,10 +95,19 @@ export function App() {
   }, [districtState, selectedDistrictIds]);
 
   const districtIds = useMemo(() => [...selectedDistrictIds], [selectedDistrictIds]);
+  const searchCategoryKeys = useMemo(
+    () => enabledCategoryKeys(visibleLayerIds),
+    [visibleLayerIds],
+  );
 
   const navigateToSelected = () => {
     const bbox = combinedDistrictBbox(selectedDistricts);
     if (bbox) navigateToBbox(bbox);
+  };
+
+  const activateSearchResult = (result: SearchResult) => {
+    setObjectSelection({ id: result.id, origin: "search" });
+    navigate(searchResultNavigation(result));
   };
 
   return (
@@ -118,7 +136,10 @@ export function App() {
           postgis={postgis}
           districtState={districtState}
           selectedDistrictIds={selectedDistrictIds}
+          districtIds={districtIds}
           visibleLayerIds={visibleLayerIds}
+          searchCategoryKeys={searchCategoryKeys}
+          selectedObjectId={objectSelection?.id ?? null}
           zoom={zoom}
           onExpandedChange={setSidebarExpanded}
           onDistrictToggle={toggleDistrict}
@@ -127,12 +148,16 @@ export function App() {
           onDistrictLocateSelected={navigateToSelected}
           onDistrictRetry={() => setDistrictRetry((value) => value + 1)}
           onLayerToggle={toggleLayer}
+          onSearchResultActivate={activateSearchResult}
         />
 
         <MapWorkspace
           visibleLayerIds={visibleLayerIds}
           districtIds={districtIds}
           navigationRequest={navigationRequest}
+          objectSelection={objectSelection}
+          onObjectSelect={(id) => setObjectSelection({ id, origin: "map" })}
+          onObjectClose={() => setObjectSelection(null)}
           onZoomChange={setZoom}
         />
       </div>

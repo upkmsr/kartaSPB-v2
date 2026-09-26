@@ -12,6 +12,9 @@ export type MapWorkspaceProps = {
   visibleLayerIds: ReadonlySet<string>;
   districtIds: readonly string[];
   navigationRequest: MapNavigationRequest | null;
+  objectSelection: { id: string; origin: "map" | "search" } | null;
+  onObjectSelect: (objectId: string) => void;
+  onObjectClose: () => void;
   onZoomChange: (zoom: number) => void;
 };
 
@@ -42,20 +45,23 @@ export function MapWorkspace({
   visibleLayerIds,
   districtIds,
   navigationRequest,
+  objectSelection,
+  onObjectSelect,
+  onObjectClose,
   onZoomChange,
 }: MapWorkspaceProps) {
   const [requestState, setRequestState] = useState<MapRequestState>({ status: "idle" });
-  const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [cardState, setCardState] = useState<ObjectCardState>({ status: "closed" });
   const detailSequenceRef = useRef(0);
+  const selectedObjectId = objectSelection?.id ?? null;
 
   useEffect(() => {
-    if (selectedFeatureId === null) {
+    if (selectedObjectId === null) {
       setCardState({ status: "closed" });
       return;
     }
 
-    const objectId = selectedFeatureId;
+    const objectId = selectedObjectId;
     const controller = new AbortController();
     const sequence = ++detailSequenceRef.current;
     setCardState({ status: "loading", objectId });
@@ -75,18 +81,21 @@ export function MapWorkspace({
       });
 
     return () => controller.abort();
-  }, [selectedFeatureId]);
+  }, [selectedObjectId]);
 
   const closeCard = useCallback(() => {
     detailSequenceRef.current += 1;
-    setSelectedFeatureId(null);
-  }, []);
+    onObjectClose();
+  }, [onObjectClose]);
 
   const handleVisibleFeatureIds = useCallback((visibleIds: ReadonlySet<string>) => {
-    setSelectedFeatureId((selectedId) =>
-      selectedId !== null && !visibleIds.has(selectedId) ? null : selectedId,
-    );
-  }, []);
+    if (
+      objectSelection?.origin === "map" &&
+      !visibleIds.has(objectSelection.id)
+    ) {
+      onObjectClose();
+    }
+  }, [objectSelection, onObjectClose]);
 
   return (
     <main className="map-workspace" aria-label="Рабочая область карты">
@@ -94,8 +103,8 @@ export function MapWorkspace({
         visibleLayerIds={visibleLayerIds}
         districtIds={districtIds}
         navigationRequest={navigationRequest}
-        selectedFeatureId={selectedFeatureId}
-        onFeatureSelect={setSelectedFeatureId}
+        selectedFeatureId={selectedObjectId}
+        onFeatureSelect={onObjectSelect}
         onVisibleFeatureIdsChange={handleVisibleFeatureIds}
         onRequestStateChange={setRequestState}
         onZoomChange={onZoomChange}

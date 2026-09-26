@@ -354,14 +354,22 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || navigationRequest === null) return;
-    const [minLon, minLat, maxLon, maxLat] = navigationRequest.bbox;
-    map.fitBounds(
-      [
-        [minLon, minLat],
-        [maxLon, maxLat],
-      ],
-      { padding: 48, duration: 700 },
-    );
+    if (navigationRequest.kind === "point") {
+      map.flyTo({
+        center: navigationRequest.center,
+        zoom: navigationRequest.zoom,
+        duration: 700,
+      });
+    } else {
+      const [minLon, minLat, maxLon, maxLat] = navigationRequest.bbox;
+      map.fitBounds(
+        [
+          [minLon, minLat],
+          [maxLon, maxLat],
+        ],
+        { padding: 56, duration: 700, maxZoom: 17 },
+      );
+    }
   }, [navigationRequest]);
 
   useEffect(() => {

@@ -4,6 +4,7 @@ import {
   activeCategoryKeys,
   categoryFilter,
   defaultVisibleLayerIds,
+  enabledCategoryKeys,
   layerRegistry,
   orderedRenderDefinitions,
 } from "./layerRegistry";
@@ -42,6 +43,14 @@ describe("layerRegistry", () => {
     expect(activeCategoryKeys(visible, 15)).toContain("transport.stop");
     expect(activeCategoryKeys(visible, 15)).not.toContain("transport.road");
     expect(activeCategoryKeys(visible, 16)).toContain("transport.road");
+  });
+
+  it("uses enabled layers as search scope independently of map zoom", () => {
+    const visible = new Set(["pharmacy", "road"]);
+    expect(enabledCategoryKeys(visible)).toEqual([
+      "healthcare.pharmacy",
+      "transport.road",
+    ]);
   });
 
   it("builds category and geometry filters", () => {

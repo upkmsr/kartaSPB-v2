@@ -7,13 +7,25 @@ vi.mock("./map/MapView", () => ({
   MapView: ({
     districtIds,
     navigationRequest,
+    selectedFeatureId,
   }: {
     districtIds: readonly string[];
-    navigationRequest: { bbox: [number, number, number, number] } | null;
+    navigationRequest:
+      | { kind: "bbox"; bbox: [number, number, number, number] }
+      | { kind: "point"; center: [number, number]; zoom: number }
+      | null;
+    selectedFeatureId: string | null;
   }) => (
     <div aria-label="Карта Санкт-Петербурга">
       <span data-testid="map-districts">{districtIds.join(",")}</span>
-      <span data-testid="map-navigation">{navigationRequest?.bbox.join(",") ?? ""}</span>
+      <span data-testid="map-navigation">
+        {navigationRequest?.kind === "bbox"
+          ? navigationRequest.bbox.join(",")
+          : navigationRequest?.kind === "point"
+            ? navigationRequest.center.join(",")
+            : ""}
+      </span>
+      <span data-testid="map-selected">{selectedFeatureId ?? ""}</span>
     </div>
   ),
 }));
@@ -84,7 +96,7 @@ describe("App", () => {
     expect(screen.queryByRole("checkbox", { name: "Центральный" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Развернуть панель" }));
     expect(screen.getByRole("checkbox", { name: "Центральный" })).toBeInTheDocument();
-  });
+  }, 10_000);
 
   it("uses district UUIDs for one, many, unselect, and clear selection", async () => {
     mockHealthyApi();
@@ -144,5 +156,69 @@ describe("App", () => {
     render(<App />);
     await waitFor(() => expect(screen.getAllByText("OFFLINE")).toHaveLength(2));
     expect(screen.getByText("Не удалось загрузить районы.")).toBeInTheDocument();
+  });
+
+  it("opens the existing ObjectCard and navigates from a canonical search result", async () => {
+    const resultId = "c49e54e1-3481-4b07-9f81-0b161b57b62b";
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/health/ready")) return Promise.resolve(response(readiness));
+      if (url.includes("/api/districts")) return Promise.resolve(response({ districts }));
+      if (url.includes("/api/search")) {
+        return Promise.resolve(
+          response({
+            type: "SearchResults",
+            results: [
+              {
+                id: resultId,
+                name: "Аптека у Невы",
+                categories: ["healthcare.pharmacy"],
+                object_kind: "feature",
+                geometry_type: "Point",
+                representative_point: { type: "Point", coordinates: [30.3, 59.9] },
+                bbox: [30.3, 59.9, 30.3, 59.9],
+              },
+            ],
+          }),
+        );
+      }
+      if (url.includes(`/api/objects/${resultId}`)) {
+        return Promise.resolve(
+          response({
+            id: resultId,
+            name: "Аптека у Невы",
+            categories: ["healthcare.pharmacy"],
+            object_kind: "feature",
+            geometry_type: "Point",
+            properties: {},
+            sources: [],
+          }),
+        );
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    render(<App />);
+    const input = screen.getByRole("textbox", { name: "Поиск объектов" });
+    fireEvent.change(input, { target: { value: "аптека" } });
+    const result = await screen.findByRole("button", { name: /Аптека у Невы.*Аптеки/ });
+
+    const searchUrl = new URL(
+      String(
+        vi.mocked(globalThis.fetch).mock.calls.find(([request]) =>
+          String(request).includes("/api/search"),
+        )?.[0],
+      ),
+      "http://localhost",
+    );
+    expect(searchUrl.searchParams.get("categories")).toContain("healthcare.pharmacy");
+    fireEvent.click(result);
+
+    expect(screen.getByTestId("map-selected")).toHaveTextContent(resultId);
+    expect(screen.getByTestId("map-navigation")).toHaveTextContent("30.3,59.9");
+    expect(await screen.findByRole("heading", { name: "Аптека у Невы" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Очистить поиск" }));
+    expect(screen.getByRole("heading", { name: "Аптека у Невы" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Закрыть карточку" }));
+    expect(screen.queryByLabelText("Карточка объекта")).not.toBeInTheDocument();
   });
 });

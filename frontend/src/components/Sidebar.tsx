@@ -1,7 +1,9 @@
 import type { District } from "../api/districts";
 import { DistrictSection, type DistrictLoadState } from "./DistrictSection";
 import { LayerControl } from "./LayerControl";
+import { SearchSection } from "./SearchSection";
 import { StatusIndicator } from "./StatusIndicator";
+import type { SearchResult } from "../api/search";
 
 type ConnectionState = "checking" | "ready" | "offline";
 
@@ -11,7 +13,10 @@ export type SidebarProps = {
   postgis: ConnectionState;
   districtState: DistrictLoadState;
   selectedDistrictIds: ReadonlySet<string>;
+  districtIds: readonly string[];
   visibleLayerIds: ReadonlySet<string>;
+  searchCategoryKeys: readonly string[];
+  selectedObjectId: string | null;
   zoom: number;
   onExpandedChange: (expanded: boolean) => void;
   onDistrictToggle: (districtId: string) => void;
@@ -20,6 +25,7 @@ export type SidebarProps = {
   onDistrictLocateSelected: () => void;
   onDistrictRetry: () => void;
   onLayerToggle: (layerId: string) => void;
+  onSearchResultActivate: (result: SearchResult) => void;
 };
 
 export function Sidebar({
@@ -28,7 +34,10 @@ export function Sidebar({
   postgis,
   districtState,
   selectedDistrictIds,
+  districtIds,
   visibleLayerIds,
+  searchCategoryKeys,
+  selectedObjectId,
   zoom,
   onExpandedChange,
   onDistrictToggle,
@@ -37,6 +46,7 @@ export function Sidebar({
   onDistrictLocateSelected,
   onDistrictRetry,
   onLayerToggle,
+  onSearchResultActivate,
 }: SidebarProps) {
   return (
     <aside
@@ -54,13 +64,20 @@ export function Sidebar({
         {expanded && <span>Свернуть</span>}
       </button>
 
-      {expanded && (
-        <div
-          className="sidebar__content"
-          role="region"
-          aria-label="Прокручиваемые настройки карты"
-          tabIndex={0}
-        >
+      <div
+        className="sidebar__content"
+        role="region"
+        aria-label="Прокручиваемые настройки карты"
+        tabIndex={expanded ? 0 : -1}
+        hidden={!expanded}
+      >
+          <SearchSection
+            districtIds={districtIds}
+            categoryKeys={searchCategoryKeys}
+            selectedObjectId={selectedObjectId}
+            onResultActivate={onSearchResultActivate}
+          />
+
           <DistrictSection
             state={districtState}
             selectedDistrictIds={selectedDistrictIds}
@@ -82,8 +99,7 @@ export function Sidebar({
             <StatusIndicator label="Backend" status={backend} />
             <StatusIndicator label="PostGIS" status={postgis} />
           </section>
-        </div>
-      )}
+      </div>
     </aside>
   );
 }
