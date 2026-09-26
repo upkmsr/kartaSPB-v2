@@ -257,6 +257,71 @@ describe("MapView MapLibre integration", () => {
     expect(map.source?.setData).not.toHaveBeenCalled();
   });
 
+  it("clears visible canonical IDs when the last enabled layer is disabled", async () => {
+    const onVisibleFeatureIdsChange = vi.fn();
+    const featureCollection: CatalogFeatureCollection = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: "0014437e-092b-479f-a006-10c926604682",
+          geometry: { type: "Polygon", coordinates: [] },
+          properties: {
+            canonical_id: "0014437e-092b-479f-a006-10c926604682",
+            name: "Парк",
+            categories: ["nature.park"],
+            object_kind: "feature",
+          },
+        },
+      ],
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(featureCollection), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const { rerender } = render(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
+        selectedFeatureId="0014437e-092b-479f-a006-10c926604682"
+        onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={onVisibleFeatureIdsChange}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+    expect(onVisibleFeatureIdsChange).toHaveBeenLastCalledWith(
+      new Set(["0014437e-092b-479f-a006-10c926604682"]),
+    );
+
+    rerender(
+      <MapView
+        visibleLayerIds={new Set()}
+        districtIds={[]}
+        navigationRequest={null}
+        selectedFeatureId="0014437e-092b-479f-a006-10c926604682"
+        onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={onVisibleFeatureIdsChange}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+    await act(async () => vi.runAllTimersAsync());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(map.source?.setData).toHaveBeenLastCalledWith({
+      type: "FeatureCollection",
+      features: [],
+    });
+    expect(onVisibleFeatureIdsChange).toHaveBeenLastCalledWith(new Set());
+  });
+
   it("keeps the last successful source on failure and recovers with an empty result", async () => {
     const onRequestStateChange = vi.fn();
     const success = {

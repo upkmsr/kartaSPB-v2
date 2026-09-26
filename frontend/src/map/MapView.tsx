@@ -237,6 +237,7 @@ export function MapView({
           requestRef.current.cancel();
           latestDataRef.current = EMPTY_FEATURE_COLLECTION;
           setSourceData(EMPTY_FEATURE_COLLECTION);
+          onVisibleFeatureIdsChangeRef.current(new Set());
           onRequestStateChangeRef.current({ status: "empty", durationMs: 0 });
           return;
         }

@@ -176,3 +176,17 @@ it("keeps a search-selected object when it is absent from viewport GeoJSON", asy
   fireEvent.click(screen.getByRole("button", { name: "Применить пустой scope" }));
   expect(screen.getByRole("heading", { name: "Озерки" })).toBeInTheDocument();
 });
+
+it("keeps an object-details failure scoped to ObjectCard", async () => {
+  vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("object service unavailable"));
+  render(<WorkspaceHarness />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Выбрать аптеку" }));
+
+  expect(
+    await screen.findByRole("heading", { name: "Не удалось открыть карточку" }),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Рабочая область карты")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Закрыть карточку" }));
+  expect(screen.queryByLabelText("Карточка объекта")).not.toBeInTheDocument();
+});

@@ -32,7 +32,10 @@ Checkboxes change the exact backend scope without moving the map. Each row has a
 separate locate action using its public bbox, while “Показать выбранные” computes one
 client-side bbox union and calls `fitBounds` once. This union is navigation only; exact
 spatial filtering remains a backend geometry intersection. If a successful scoped map
-response no longer contains the selected object, its highlight and ObjectCard close.
+response no longer contains a map-origin selected object, its highlight and ObjectCard
+close. Disabling the last layer follows the same rule when the source is cleared. A
+search-origin selection remains coherent outside the current GeoJSON source because its
+navigation metadata and ObjectCard UUID do not depend on viewport feature availability.
 
 ## Catalog search
 
@@ -120,3 +123,10 @@ PMTiles, and a tile server are intentionally not introduced in FOUNDATION 4.
 - The generic `boundary.administrative` layer remains a technical baseline and is not
   used as district identity. The separate `domain.districts` registry supplies the
   authoritative 18 selectable application districts.
+
+## Deferred product scope
+
+FOUNDATION 5 remains a desktop-only experience with a supported minimum width of
+1280 px. URL state, mobile/tablet layouts, fuzzy search, canonical street entities,
+property filters, GTFS, routing, scoring, and heatmaps remain deferred. None of these
+capabilities are implied by the district, search, or selection flows described above.
