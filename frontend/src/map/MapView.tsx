@@ -8,6 +8,11 @@ import type {
   StyleSpecification,
 } from "maplibre-gl";
 import {
+  EMPTY_DISTRICT_GEOMETRY,
+  LatestDistrictGeometryRequest,
+  type DistrictGeometryFeatureCollection,
+} from "../api/districts";
+import {
   activeCategoryKeys,
   categoryFilter,
   geometryFilter,
@@ -16,6 +21,10 @@ import {
   orderedRenderDefinitions,
 } from "./layerRegistry";
 import { alignOpenFreeMapRoadArrows } from "./basemapStyle";
+import {
+  installSelectedDistrictOverlay,
+  setSelectedDistrictOverlayData,
+} from "./districtOverlay";
 import { guardBbox, LatestMapRequest, MapApiError } from "./mapApi";
 import {
   EMPTY_FEATURE_COLLECTION,
@@ -166,7 +175,11 @@ export function MapView({
   const onRequestStateChangeRef = useRef(onRequestStateChange);
   const onZoomChangeRef = useRef(onZoomChange);
   const latestDataRef = useRef<CatalogFeatureCollection>(EMPTY_FEATURE_COLLECTION);
+  const latestDistrictDataRef = useRef<DistrictGeometryFeatureCollection>(
+    EMPTY_DISTRICT_GEOMETRY,
+  );
   const requestRef = useRef(new LatestMapRequest());
+  const districtGeometryRequestRef = useRef(new LatestDistrictGeometryRequest());
   const debounceTimerRef = useRef<number | null>(null);
   const loadViewportRef = useRef<(delay?: number) => void>(() => undefined);
 
@@ -288,6 +301,12 @@ export function MapView({
         visibleLayerIdsRef.current,
         selectedFeatureIdRef.current,
       );
+      installSelectedDistrictOverlay(
+        map,
+        latestDistrictDataRef.current,
+        orderedRenderDefinitions[0]?.definition.id,
+        "selection-fill",
+      );
       loadViewport(0);
     };
 
@@ -326,11 +345,13 @@ export function MapView({
     });
 
     const request = requestRef.current;
+    const districtGeometryRequest = districtGeometryRequestRef.current;
     return () => {
       if (debounceTimerRef.current !== null) window.clearTimeout(debounceTimerRef.current);
       if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
       resizeObserver?.disconnect();
       request.cancel();
+      districtGeometryRequest.cancel();
       map.remove();
       mapRef.current = null;
     };
@@ -352,6 +373,25 @@ export function MapView({
 
   useEffect(() => {
     loadViewportRef.current(0);
+    const map = mapRef.current;
+    const request = districtGeometryRequestRef.current;
+    latestDistrictDataRef.current = EMPTY_DISTRICT_GEOMETRY;
+    if (map) setSelectedDistrictOverlayData(map, EMPTY_DISTRICT_GEOMETRY);
+    if (districtIds.length === 0) {
+      request.cancel();
+      return;
+    }
+    void request.run(
+      districtIds,
+      (collection) => {
+        latestDistrictDataRef.current = collection;
+        const currentMap = mapRef.current;
+        if (currentMap) setSelectedDistrictOverlayData(currentMap, collection);
+      },
+      () => {
+        // District filtering remains active even if its visual overlay cannot load.
+      },
+    );
   }, [districtIds]);
 
   useEffect(() => {

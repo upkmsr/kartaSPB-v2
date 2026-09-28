@@ -1,6 +1,7 @@
 import argparse
 import json
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Connection, Engine, text
@@ -125,6 +126,14 @@ class DistrictData:
     slug: str
     bbox: tuple[float, float, float, float]
     display_order: int
+
+
+@dataclass(frozen=True)
+class DistrictGeometryData:
+    id: UUID
+    name: str
+    slug: str
+    geometry: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -362,6 +371,56 @@ class DistrictCatalogService:
                         float(row.max_lat),
                     ),
                     display_order=int(row.display_order),
+                )
+            )
+        return result
+
+    def geometries(self, district_ids: tuple[UUID, ...]) -> list[DistrictGeometryData]:
+        if not district_ids:
+            return []
+        with self.engine.connect() as connection:
+            validate_district_selection(connection, district_ids)
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT district.id,district.name,district.slug,
+                           object.lifecycle_status,
+                           object.geom IS NOT NULL AS has_geometry,
+                           coalesce(ST_IsEmpty(object.geom),true) AS is_empty,
+                           coalesce(ST_IsValid(object.geom),false) AS is_valid,
+                           ST_SRID(object.geom) AS srid,
+                           ST_GeometryType(object.geom) AS geometry_type,
+                           ST_AsGeoJSON(object.geom)::jsonb AS geometry
+                    FROM domain.districts AS district
+                    JOIN catalog.objects AS object ON object.id=district.canonical_object_id
+                    WHERE district.id=ANY(:district_ids)
+                      AND district.enabled
+                    ORDER BY district.display_order
+                    """
+                ),
+                {"district_ids": list(district_ids)},
+            ).all()
+        if len(rows) != len(district_ids):
+            raise DistrictRegistryError("Selected district geometry bindings are incomplete")
+        result: list[DistrictGeometryData] = []
+        for row in rows:
+            if not (
+                row.lifecycle_status == "active"
+                and bool(row.has_geometry)
+                and not bool(row.is_empty)
+                and bool(row.is_valid)
+                and row.srid == 4326
+                and row.geometry_type in {"ST_Polygon", "ST_MultiPolygon"}
+                and isinstance(row.geometry, dict)
+                and isinstance(row.geometry.get("coordinates"), list)
+            ):
+                raise DistrictRegistryError(f"District {row.id} has invalid canonical geometry")
+            result.append(
+                DistrictGeometryData(
+                    id=row.id,
+                    name=str(row.name),
+                    slug=str(row.slug),
+                    geometry=row.geometry,
                 )
             )
         return result

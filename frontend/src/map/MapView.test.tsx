@@ -10,7 +10,9 @@ type MockMapInstance = {
   handlers: Record<string, Array<(...args: unknown[]) => void>>;
   layers: Map<string, { id: string }>;
   source: MockSource | null;
+  districtSource: MockSource | null;
   addedSourceData: unknown[];
+  addedDistrictSourceData: unknown[];
   renderedFeatures: Array<{ id?: string | number; properties?: Record<string, unknown> }>;
   zoom: number;
   bounds: { west: number; south: number; east: number; north: number };
@@ -29,7 +31,9 @@ vi.mock("maplibre-gl", () => {
     handlers: Record<string, Array<(...args: unknown[]) => void>> = {};
     layers = new Map<string, { id: string }>();
     source: MockSource | null = null;
+    districtSource: MockSource | null = null;
     addedSourceData: unknown[] = [];
+    addedDistrictSourceData: unknown[] = [];
     renderedFeatures: Array<{ id?: string | number; properties?: Record<string, unknown> }> = [];
     canvas = document.createElement("canvas");
     zoom = 12;
@@ -51,12 +55,17 @@ vi.mock("maplibre-gl", () => {
     emit(event: string, value?: unknown) {
       for (const handler of this.handlers[event] ?? []) handler(value);
     }
-    getSource() {
-      return this.source;
+    getSource(id: string) {
+      return id === "selected-districts" ? this.districtSource : this.source;
     }
-    addSource(_id: string, source: { data: unknown }) {
-      this.addedSourceData.push(source.data);
-      this.source = { setData: vi.fn() };
+    addSource(id: string, source: { data: unknown }) {
+      if (id === "selected-districts") {
+        this.addedDistrictSourceData.push(source.data);
+        this.districtSource = { setData: vi.fn() };
+      } else {
+        this.addedSourceData.push(source.data);
+        this.source = { setData: vi.fn() };
+      }
     }
     getLayer(id: string) {
       return this.layers.get(id);
@@ -156,10 +165,13 @@ describe("MapView MapLibre integration", () => {
       expect.stringContaining("maplibre-gl-worker"),
     );
     expect(map.source).not.toBeNull();
+    expect(map.districtSource).not.toBeNull();
     expect(map.layers.has("water-fill")).toBe(true);
     expect(map.layers.has("school-point")).toBe(true);
     expect(map.layers.has("road-line")).toBe(true);
     expect(map.layers.has("selection-point")).toBe(true);
+    expect(map.layers.has("selected-district-fill")).toBe(true);
+    expect(map.layers.has("selected-district-outline")).toBe(true);
     expect(map.source?.setData).toHaveBeenCalledWith(featureCollection);
     expect(map.resize).toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -218,12 +230,17 @@ describe("MapView MapLibre integration", () => {
     await act(async () => vi.runAllTimersAsync());
 
     map.source = null;
+    map.districtSource = null;
     map.layers.clear();
     act(() => map.emit("style.load"));
 
     expect(map.addedSourceData.at(-1)).toEqual(featureCollection);
     expect(map.layers.has("water-fill")).toBe(true);
     expect(map.layers.has("selection-point")).toBe(true);
+    expect(map.addedDistrictSourceData.at(-1)).toEqual({
+      type: "FeatureCollection",
+      features: [],
+    });
   });
 
   it("preserves source data on feature limits and bbox guard failures", async () => {
@@ -481,6 +498,149 @@ describe("MapView MapLibre integration", () => {
       ],
       { padding: 56, duration: 700, maxZoom: 17 },
     );
+  });
+
+  it("loads one exact geometry request for 1/N selections and clears the independent overlay", async () => {
+    const central = "161ba369-c548-5569-9cc2-679522090220";
+    const primorsky = "230bcc6e-fb6a-5172-afe6-81f0736fb77b";
+    const selectedDistricts = [central, primorsky];
+    const districtCollection = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: central,
+          properties: { id: central, name: "Центральный", slug: "centralny" },
+          geometry: {
+            type: "Polygon",
+            coordinates: [[[30.3, 59.9], [30.4, 59.9], [30.3, 59.9]]],
+          },
+        },
+      ],
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify(
+            url.includes("/api/districts/geometry")
+              ? districtCollection
+              : { type: "FeatureCollection", features: [] },
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    });
+    const props = {
+      visibleLayerIds: defaultVisibleLayerIds(),
+      navigationRequest: null,
+      selectedFeatureId: null,
+      onFeatureSelect: vi.fn(),
+      onVisibleFeatureIdsChange: vi.fn(),
+      onRequestStateChange: vi.fn(),
+      onZoomChange: vi.fn(),
+    };
+    const { rerender } = render(<MapView {...props} districtIds={[]} />);
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+    expect(
+      fetchMock.mock.calls.filter(([request]) =>
+        String(request).includes("/api/districts/geometry"),
+      ),
+    ).toHaveLength(0);
+
+    rerender(<MapView {...props} districtIds={[central]} />);
+    await act(async () => vi.runAllTimersAsync());
+    let geometryCalls = fetchMock.mock.calls.filter(([request]) =>
+      String(request).includes("/api/districts/geometry"),
+    );
+    expect(geometryCalls).toHaveLength(1);
+    expect(
+      new URL(String(geometryCalls[0][0]), "http://localhost").searchParams.get("districts"),
+    ).toBe(central);
+    expect(map.districtSource?.setData).toHaveBeenLastCalledWith(districtCollection);
+
+    rerender(<MapView {...props} districtIds={selectedDistricts} />);
+    await act(async () => vi.runAllTimersAsync());
+    geometryCalls = fetchMock.mock.calls.filter(([request]) =>
+      String(request).includes("/api/districts/geometry"),
+    );
+    expect(geometryCalls).toHaveLength(2);
+    expect(
+      new URL(String(geometryCalls[1][0]), "http://localhost").searchParams.get("districts"),
+    ).toBe(`${central},${primorsky}`);
+
+    rerender(
+      <MapView {...props} visibleLayerIds={new Set()} districtIds={selectedDistricts} />,
+    );
+    await act(async () => vi.runAllTimersAsync());
+    expect(map.layers.has("selected-district-fill")).toBe(true);
+    expect(map.layers.has("selected-district-outline")).toBe(true);
+    expect(map.districtSource?.setData).toHaveBeenLastCalledWith(districtCollection);
+
+    rerender(<MapView {...props} visibleLayerIds={new Set()} districtIds={[]} />);
+    await act(async () => vi.runAllTimersAsync());
+    expect(map.districtSource?.setData).toHaveBeenLastCalledWith({
+      type: "FeatureCollection",
+      features: [],
+    });
+    expect(
+      fetchMock.mock.calls.filter(([request]) =>
+        String(request).includes("/api/districts/geometry"),
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("keeps the map usable and overlay empty when selected geometry fails", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+      String(input).includes("/api/districts/geometry")
+        ? Promise.reject(new Error("district geometry unavailable"))
+        : Promise.resolve(
+            new Response(JSON.stringify({ type: "FeatureCollection", features: [] }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+          ),
+    );
+    const { rerender } = render(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
+        selectedFeatureId={null}
+        onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={vi.fn()}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+    rerender(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={["161ba369-c548-5569-9cc2-679522090220"]}
+        navigationRequest={null}
+        selectedFeatureId={null}
+        onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={vi.fn()}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+    await act(async () => vi.runAllTimersAsync());
+
+    expect(map.districtSource?.setData).toHaveBeenLastCalledWith({
+      type: "FeatureCollection",
+      features: [],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/districts/geometry"),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(map.layers.has("water-fill")).toBe(true);
   });
 
   it("flies to a point search navigation target", async () => {

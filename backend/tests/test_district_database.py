@@ -115,10 +115,11 @@ def test_district_registry_and_spatial_map_contracts(client: TestClient) -> None
             )
             for index, item in enumerate(DISTRICT_DEFINITIONS):
                 min_lon = 10 + index * 0.05
-                geometry = (
-                    f"POLYGON(({min_lon} 10,{min_lon + 0.05} 10,"
-                    f"{min_lon + 0.05} 10.05,{min_lon} 10.05,{min_lon} 10))"
+                ring = (
+                    f"({min_lon} 10,{min_lon + 0.05} 10,"
+                    f"{min_lon + 0.05} 10.05,{min_lon} 10.05,{min_lon} 10)"
                 )
+                geometry = f"MULTIPOLYGON(({ring}))" if index == 8 else f"POLYGON({ring})"
                 connection.execute(
                     text(
                         """
@@ -269,6 +270,29 @@ def test_district_registry_and_spatial_map_contracts(client: TestClient) -> None
         assert "geometry" not in district_response.text
 
         district_ids = [str(item.id) for item in DISTRICT_DEFINITIONS]
+        geometry_response = client.get(
+            "/api/districts/geometry", params={"districts": ",".join(district_ids)}
+        )
+        assert geometry_response.status_code == 200
+        geometry_features = geometry_response.json()["features"]
+        assert len(geometry_features) == 18
+        assert {feature["id"] for feature in geometry_features} == set(district_ids)
+        assert {feature["geometry"]["type"] for feature in geometry_features} == {
+            "Polygon",
+            "MultiPolygon",
+        }
+        assert all(
+            set(feature["properties"]) == {"id", "name", "slug"}
+            and feature["properties"]["id"] == feature["id"]
+            for feature in geometry_features
+        )
+        duplicate_geometry = client.get(
+            "/api/districts/geometry",
+            params={"districts": f"{district_ids[0]},{district_ids[0]}"},
+        )
+        assert duplicate_geometry.status_code == 200
+        assert len(duplicate_geometry.json()["features"]) == 1
+
         common = {"bbox": "9.99,9.99,10.16,10.06", "categories": category, "limit": 10}
         unfiltered = client.get("/api/map/features", params=common)
         one = client.get(
@@ -320,6 +344,11 @@ def test_district_registry_and_spatial_map_contracts(client: TestClient) -> None
         )
         assert disabled.status_code == 422
         assert disabled.json()["detail"]["disabled_districts"] == [district_ids[0]]
+        disabled_geometry = client.get(
+            "/api/districts/geometry", params={"districts": district_ids[0]}
+        )
+        assert disabled_geometry.status_code == 422
+        assert disabled_geometry.json()["detail"]["disabled_districts"] == [district_ids[0]]
     finally:
         with engine.begin() as connection:
             connection.execute(text("DELETE FROM domain.districts"))

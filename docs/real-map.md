@@ -37,6 +37,28 @@ close. Disabling the last layer follows the same rule when the source is cleared
 search-origin selection remains coherent outside the current GeoJSON source because its
 navigation metadata and ObjectCard UUID do not depend on viewport feature availability.
 
+The same selected UUID list drives a visual-only district overlay. Zero selections clear
+it; one or more selections make one batch request to `GET /api/districts/geometry` and
+update the dedicated `selected-districts` GeoJSON source. The
+`selected-district-fill` layer uses a very low-opacity turquoise fill below catalog
+objects, while `selected-district-outline` uses a zoom-interpolated line above catalog
+objects and below object-selection highlights. Neither layer has a category minZoom or
+belongs to the Layer Registry, so the overlay remains when the generic administrative
+boundary or every ordinary layer is off. It is excluded from interactive layer queries
+and therefore does not block normal object clicks.
+
+Rapid changes abort the previous geometry request and use monotonic stale-response
+protection. A new selection clears the previous overlay until its exact geometry arrives;
+failures leave the map and authoritative backend filtering usable. Style reloads restore
+the latest successful district collection. Bboxes remain navigation-only, canonical
+district geometry remains the filtering authority, and no district polygon is duplicated
+or reconstructed in the frontend.
+
+Exact geometry is small enough for direct GeoJSON at the current scale: the local real
+dataset measured 3,586 bytes for Центральный, 69,122 bytes for Курортный, and 410,921
+bytes for all 18 districts. Warm local responses were approximately 36 ms, 91 ms, and
+199 ms respectively, so no display simplification or vector-tile path is introduced.
+
 ## Catalog search
 
 The expanded sidebar keeps Search above Districts and Layers. Input stays local until

@@ -9,9 +9,16 @@ category-specific routes.
 `GET /api/districts` returns the 18 enabled application districts in deterministic
 `display_order`. Each entry contains its stable domain UUID, display name, ASCII slug,
 display order, and bbox. Exact district polygons are deliberately omitted: the bbox is
-sufficient for the planned selector and `fitBounds`, while exact canonical geometry
-remains internal for spatial filtering. A district detail endpoint is therefore not
-needed.
+sufficient for the selector and `fitBounds`, while exact canonical geometry is loaded
+only for an active visual selection.
+
+`GET /api/districts/geometry?districts=<uuid>,<uuid>` returns one GeoJSON
+`FeatureCollection` containing only the requested enabled districts. Each feature ID is
+the public district UUID, properties are limited to `id`, `name`, and `slug`, and geometry
+is the exact Polygon or MultiPolygon from the bound canonical catalog object. The normal
+district list remains lightweight and never carries geometry. Requests reuse the same
+UUID parsing, 18-ID limit, duplicate normalization, and enabled/known district validation
+as map filtering; one request serves any 1–18 district selection.
 
 ## Map features
 
