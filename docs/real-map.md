@@ -90,12 +90,29 @@ Set the value to `local` for the background-only emergency style. If the
 external style cannot load, the map installs that local style and then restores
 the catalog source, render layers, and most recent FeatureCollection.
 
+The default OpenFreeMap style supplies one-way traffic arrows through its
+`road_oneway` and `road_oneway_opposite` symbol layers over the OpenMapTiles
+`transportation` source layer. Its `oneway` values `1` and `-1` preserve forward
+and reverse line-direction semantics, but the current `oneway` sprite artwork
+points up while MapLibre aligns a line-placed icon's x-axis to the road. For the
+default style only, the client applies a guarded layout override of 90° and 270°
+respectively after each style load. This puts the sprite on the local road tangent
+without replacing the basemap style or changing labels, POIs, buildings, water,
+or other road styling. The override is skipped if the expected layer, source,
+filter, icon, placement, alignment, or original rotation contract does not match.
+
 Clicking an interactive render layer uses the GeoJSON feature's canonical UUID,
 loads the public object-details endpoint with abort/stale protection, highlights
 the selected geometry, and shows only canonical properties and compact source
 summaries. Search result clicks reuse that same flow; routing, drawing, and user data
 remain outside the current scope. District scope was added by FOUNDATION 5B1 and
 search UI by FOUNDATION 5B2.
+
+The District heading keeps its accordion toggle and “Все районы” as independent
+buttons separated by a visible gap. The accordion remains the larger labeled
+target with a 32×32 px chevron cue inside a 40 px-high control; the clear action
+has its own bordered 32 px-high target. Either action leaves the other control's
+state unchanged, and collapsing the accordion continues to preserve selection.
 
 The production build imports and emits the MapLibre worker as a dedicated
 JavaScript asset, then configures its URL before constructing the map. The build

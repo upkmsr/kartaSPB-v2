@@ -15,6 +15,7 @@ type MockMapInstance = {
   zoom: number;
   bounds: { west: number; south: number; east: number; north: number };
   emit: (event: string, value?: unknown) => void;
+  getStyle: () => { version: 8; sources: Record<string, never>; layers: [] };
   setLayoutProperty: ReturnType<typeof vi.fn>;
   fitBounds: ReturnType<typeof vi.fn>;
   flyTo: ReturnType<typeof vi.fn>;
@@ -59,6 +60,9 @@ vi.mock("maplibre-gl", () => {
     }
     getLayer(id: string) {
       return this.layers.get(id);
+    }
+    getStyle() {
+      return { version: 8 as const, sources: {}, layers: [] as [] };
     }
     addLayer(layer: { id: string }) {
       this.layers.set(layer.id, layer);

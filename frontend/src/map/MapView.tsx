@@ -15,6 +15,7 @@ import {
   layerRegistry,
   orderedRenderDefinitions,
 } from "./layerRegistry";
+import { alignOpenFreeMapRoadArrows } from "./basemapStyle";
 import { guardBbox, LatestMapRequest, MapApiError } from "./mapApi";
 import {
   EMPTY_FEATURE_COLLECTION,
@@ -280,6 +281,7 @@ export function MapView({
     loadViewportRef.current = loadViewport;
 
     const installOverlay = (): void => {
+      if (primaryStyleUrl === DEFAULT_STYLE_URL) alignOpenFreeMapRoadArrows(map);
       installCatalogLayers(
         map,
         latestDataRef.current,

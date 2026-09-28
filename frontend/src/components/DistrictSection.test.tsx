@@ -12,7 +12,7 @@ const districts: District[] = Array.from({ length: 18 }, (_, index) => ({
   bbox: [30, 59, 30.1, 59.1],
 }));
 
-function SelectionHarness() {
+function SelectionHarness({ onClear = vi.fn() }: { onClear?: () => void }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   return (
     <DistrictSection
@@ -26,7 +26,10 @@ function SelectionHarness() {
           return next;
         })
       }
-      onClear={() => setSelected(new Set())}
+      onClear={() => {
+        onClear();
+        setSelected(new Set());
+      }}
       onLocate={vi.fn()}
       onLocateSelected={vi.fn()}
       onRetry={vi.fn()}
@@ -63,6 +66,28 @@ it("renders 18 backend rows and supports 0, 1, N, unselect, and clear", () => {
   fireEvent.click(screen.getByRole("button", { name: "Все районы" }));
   expect(screen.getByText("Без ограничений")).toBeInTheDocument();
 }, 10_000);
+
+it("keeps accordion and clear actions independent with a keyboard-focusable toggle", () => {
+  const onClear = vi.fn();
+  render(<SelectionHarness onClear={onClear} />);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Район 1" }));
+  const accordion = screen.getByRole("button", { name: /^Районы/ });
+  const clear = screen.getByRole("button", { name: "Все районы" });
+
+  accordion.focus();
+  expect(accordion).toHaveFocus();
+  expect(accordion).toHaveAttribute("aria-expanded", "true");
+  fireEvent.click(accordion);
+  expect(accordion).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByText("1 выбрано")).toBeInTheDocument();
+  expect(onClear).not.toHaveBeenCalled();
+
+  fireEvent.click(accordion);
+  fireEvent.click(clear);
+  expect(onClear).toHaveBeenCalledOnce();
+  expect(accordion).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByText("Без ограничений")).toBeInTheDocument();
+});
 
 it.each<[DistrictLoadState, string]>([
   [{ status: "loading" }, "Загружаем районы…"],

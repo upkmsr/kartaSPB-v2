@@ -38,6 +38,9 @@ export function DistrictSection({
           aria-expanded={expanded}
           aria-controls="district-control-content"
         >
+          <span className="district-control__chevron" aria-hidden="true">
+            {expanded ? "⌃" : "⌄"}
+          </span>
           <span>
             <span className="section-label" id="districts-heading">
               Районы
@@ -46,12 +49,9 @@ export function DistrictSection({
               {selectedCount === 0 ? "Без ограничений" : `${selectedCount} выбрано`}
             </span>
           </span>
-          <span className="district-control__chevron" aria-hidden="true">
-            {expanded ? "⌃" : "⌄"}
-          </span>
         </button>
         <button
-          className="text-button"
+          className="text-button district-control__clear"
           type="button"
           onClick={onClear}
           disabled={selectedCount === 0}
