@@ -2,7 +2,17 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, CheckConstraint, DateTime, ForeignKey, String, func
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,6 +22,7 @@ from app.db.base import Base
 class ImportRunStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
+    STAGED = "staged"
     SUCCESS = "success"
     FAILED = "failed"
 
@@ -20,8 +31,10 @@ class ImportRun(Base):
     __tablename__ = "import_runs"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'running', 'success', 'failed')", name="status_allowed"
+            "status IN ('pending', 'running', 'staged', 'success', 'failed')",
+            name="status_allowed",
         ),
+        Index("ix_meta_import_runs_source_profile", "source_id", "profile", "id"),
         {"schema": "meta"},
     )
 
@@ -36,6 +49,11 @@ class ImportRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source_version: Mapped[str | None] = mapped_column(String(200))
     checksum: Mapped[str | None] = mapped_column(String(128))
+    profile: Mapped[str | None] = mapped_column(String(100))
+    authoritative_snapshot: Mapped[bool] = mapped_column(
+        Boolean(), default=False, server_default="false"
+    )
+    lifecycle_finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     processed_count: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     inserted_count: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     updated_count: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")

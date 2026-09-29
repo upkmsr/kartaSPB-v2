@@ -60,7 +60,7 @@ def _load_candidates(connection: Any, source_id: int, identities_json: str) -> l
             WITH requested AS (
                 SELECT source_object_type, source_object_id
                 FROM jsonb_to_recordset(CAST(:identities AS jsonb))
-                     AS item(source_object_type text, source_object_id text)
+                     AS item(source_object_type text, source_object_id bigint)
             ), candidates AS (
                 SELECT 'node'::text AS source_object_type,
                        node.osm_id::text AS source_object_id,
@@ -71,7 +71,7 @@ def _load_candidates(connection: Any, source_id: int, identities_json: str) -> l
                 FROM requested
                 JOIN staging.osm_nodes AS node
                   ON requested.source_object_type = 'node'
-                 AND requested.source_object_id = node.osm_id::text
+                 AND requested.source_object_id = node.osm_id
                  AND node.source_id = :source_id
                 WHERE node.geom IS NOT NULL
                   AND NOT ST_IsEmpty(node.geom)
@@ -84,7 +84,7 @@ def _load_candidates(connection: Any, source_id: int, identities_json: str) -> l
                 FROM requested
                 JOIN staging.osm_ways AS way
                   ON requested.source_object_type = 'way'
-                 AND requested.source_object_id = way.osm_id::text
+                 AND requested.source_object_id = way.osm_id
                  AND way.source_id = :source_id
                 WHERE way.geom IS NOT NULL
                   AND GeometryType(way.geom) IN ('LINESTRING', 'POLYGON')
@@ -100,7 +100,7 @@ def _load_candidates(connection: Any, source_id: int, identities_json: str) -> l
                 FROM requested
                 JOIN staging.osm_relations AS relation
                   ON requested.source_object_type = 'relation'
-                 AND requested.source_object_id = relation.osm_id::text
+                 AND requested.source_object_id = relation.osm_id
                  AND relation.source_id = :source_id
                 JOIN derived.osm_relation_geometries AS geometry
                   ON geometry.source_id = relation.source_id
@@ -177,7 +177,7 @@ def canonicalize_osm_objects(
                 JOIN meta.dataset_sources AS source ON source.id = run.source_id
                 WHERE run.id = :run_id
                   AND run.source_id = :source_id
-                  AND run.status = 'success'
+                  AND run.status IN ('staged', 'success')
                 """
             ),
             {"run_id": import_run_id, "source_id": source_id},
@@ -453,6 +453,8 @@ def canonicalize_osm_objects(
                         name = prepared.name,
                         name_source_id = prepared.name_source_id,
                         properties = prepared.properties,
+                        lifecycle_status = 'active',
+                        retired_at = NULL,
                         revision = current.revision + 1,
                         updated_at = now()
                     FROM prepared
@@ -462,7 +464,9 @@ def canonicalize_osm_objects(
                               prepared.geometry_source_id
                            OR current.name IS DISTINCT FROM prepared.name
                            OR current.name_source_id IS DISTINCT FROM prepared.name_source_id
-                           OR current.properties IS DISTINCT FROM prepared.properties)
+                           OR current.properties IS DISTINCT FROM prepared.properties
+                           OR current.lifecycle_status IS DISTINCT FROM 'active'
+                           OR current.retired_at IS NOT NULL)
                     """
                 ),
                 {"object_ids": json.dumps(existing_object_ids)},

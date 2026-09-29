@@ -10,6 +10,7 @@ from app.db.models.domain import District
 from app.db.models.import_run import ImportRun, ImportRunStatus
 from app.db.models.osm import (
     OsmNode,
+    OsmProfileMembership,
     OsmRelation,
     OsmRelationGeometry,
     OsmRelationMember,
@@ -26,6 +27,7 @@ __all__ = [
     "ImportRun",
     "ImportRunStatus",
     "OsmNode",
+    "OsmProfileMembership",
     "OsmRelation",
     "OsmRelationGeometry",
     "OsmRelationMember",

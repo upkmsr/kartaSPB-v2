@@ -7,6 +7,7 @@ from app.data.osm.pipeline import (
     extract_region,
     import_region,
     inspect,
+    refresh_region,
     status,
 )
 
@@ -24,6 +25,11 @@ def parser() -> argparse.ArgumentParser:
 
     import_command = commands.add_parser("import", help="Import an extract into staging")
     import_command.add_argument("--region", required=True, choices=sorted(load_regions()))
+
+    refresh = commands.add_parser(
+        "refresh", help="Run an authoritative staging, canonical, category, and lifecycle snapshot"
+    )
+    refresh.add_argument("--region", required=True, choices=sorted(load_regions()))
 
     smoke = commands.add_parser("smoke", help="Download, extract, and import spb_smoke")
     smoke.add_argument("--force-download", action="store_true")
@@ -44,6 +50,8 @@ def main() -> None:
             extract_region(args.region, force=args.force)
         elif args.command == "import":
             import_region(args.region)
+        elif args.command == "refresh":
+            refresh_region(args.region)
         elif args.command == "smoke":
             download_source(force=args.force_download)
             extract_region("spb_smoke", force=args.force_extract)

@@ -13,6 +13,8 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -174,3 +176,46 @@ class OsmRelationGeometry(Base):
         ForeignKey("meta.import_runs.id", ondelete="RESTRICT")
     )
     assembled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class OsmProfileMembership(Base):
+    __tablename__ = "osm_profile_memberships"
+    __table_args__ = (
+        CheckConstraint(
+            "source_object_type IN ('node', 'way', 'relation')", name="object_type"
+        ),
+        CheckConstraint("lifecycle_status IN ('present', 'missing')", name="lifecycle_status"),
+        Index(
+            "ix_meta_osm_profile_memberships_snapshot",
+            "source_id",
+            "profile",
+            "last_seen_import_run_id",
+        ),
+        Index(
+            "ix_meta_osm_profile_memberships_active_identity",
+            "source_id",
+            "source_object_type",
+            "source_object_id",
+            postgresql_where=text("lifecycle_status = 'present'"),
+        ),
+        {"schema": "meta"},
+    )
+
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("meta.dataset_sources.id", ondelete="CASCADE"), primary_key=True
+    )
+    profile: Mapped[str] = mapped_column(String(100), primary_key=True)
+    source_object_type: Mapped[str] = mapped_column(String(16), primary_key=True)
+    source_object_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    lifecycle_status: Mapped[str] = mapped_column(
+        String(16), default="present", server_default="present"
+    )
+    first_seen_import_run_id: Mapped[int] = mapped_column(
+        ForeignKey("meta.import_runs.id", ondelete="RESTRICT")
+    )
+    last_seen_import_run_id: Mapped[int] = mapped_column(
+        ForeignKey("meta.import_runs.id", ondelete="RESTRICT")
+    )
+    missing_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

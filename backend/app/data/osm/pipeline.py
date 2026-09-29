@@ -1,7 +1,7 @@
 import json
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -13,9 +13,11 @@ from sqlalchemy import URL, Connection, Engine, text
 from app.data.osm.config import (
     BboxRegionConfig,
     RegionConfig,
+    RelationPolygonRegionConfig,
     RelationRegionConfig,
     SourceConfig,
     load_region,
+    load_regions,
     load_source,
     project_root,
 )
@@ -23,6 +25,7 @@ from app.data.osm.database import (
     ensure_source,
     finish_import_run,
     record_download,
+    stage_import_run,
     start_import_run,
 )
 from app.data.osm.files import download_atomic, file_matches_sha256, sha256_file
@@ -47,6 +50,16 @@ class RemoteMetadata:
 def run_command(command: list[str], *, env: dict[str, str] | None = None) -> None:
     print("+", " ".join(command), flush=True)
     subprocess.run(command, check=True, env=env)
+
+
+def run_command_allowing_status(
+    command: list[str], *, allowed_statuses: frozenset[int]
+) -> int:
+    print("+", " ".join(command), flush=True)
+    result = subprocess.run(command, check=False)
+    if result.returncode not in allowed_statuses:
+        raise subprocess.CalledProcessError(result.returncode, command)
+    return result.returncode
 
 
 def validate_pbf(path: Path) -> None:
@@ -135,7 +148,11 @@ def _registered_source(connection: Connection, source: SourceConfig) -> dict[str
 
 
 def _extract_command(
-    region: RegionConfig, source_file: Path, partial: Path
+    region: RegionConfig,
+    source_file: Path,
+    partial: Path,
+    *,
+    polygon_file: Path | None = None,
 ) -> list[str]:
     if isinstance(region, BboxRegionConfig):
         bbox = ",".join(str(value) for value in region.bbox)
@@ -165,7 +182,244 @@ def _extract_command(
             str(source_file),
             *(f"r{relation_id}" for relation_id in region.relation_ids),
         ]
+    if isinstance(region, RelationPolygonRegionConfig):
+        if polygon_file is None:
+            raise ValueError("relation_polygon extraction requires a generated polygon file")
+        return [
+            "osmium",
+            "extract",
+            "--polygon",
+            str(polygon_file),
+            "--strategy",
+            "simple",
+            "--output",
+            str(partial),
+            "--output-format",
+            "pbf",
+            str(source_file),
+        ]
     raise TypeError(f"Unsupported OSM region profile: {type(region).__name__}")
+
+
+def _relation_polygon_files(partial: Path) -> tuple[Path, Path, Path]:
+    prefix = partial.with_name(f"{partial.name}.scope")
+    return (
+        prefix.with_suffix(".osm.pbf"),
+        prefix.with_suffix(".geojsonseq"),
+        prefix.with_suffix(".geojson"),
+    )
+
+
+def _complete_relation_polygon_selection(
+    source_file: Path, selection: Path, partial: Path
+) -> tuple[Path, ...]:
+    way_ids = selection.with_name(f"{selection.name}.ways.osm.pbf")
+    relation_ids = selection.with_name(f"{selection.name}.relations.osm.pbf")
+    parent_candidates = selection.with_name(f"{selection.name}.parent-candidates.osm.pbf")
+    parent_ids = selection.with_name(f"{selection.name}.route-masters.osm.pbf")
+    reference_ids = selection.with_name(f"{selection.name}.reference-ids.osm.pbf")
+    closure = selection.with_name(f"{selection.name}.closure.osm.pbf")
+    for path in (
+        way_ids,
+        relation_ids,
+        parent_candidates,
+        parent_ids,
+        reference_ids,
+        closure,
+        partial,
+    ):
+        path.unlink(missing_ok=True)
+    run_command(
+        [
+            "osmium",
+            "cat",
+            "--object-type",
+            "way",
+            "--output-format",
+            "pbf",
+            "--output",
+            str(way_ids),
+            str(selection),
+        ]
+    )
+    run_command(
+        [
+            "osmium",
+            "tags-filter",
+            "--omit-referenced",
+            "--output-format",
+            "pbf",
+            "--output",
+            str(relation_ids),
+            str(selection),
+            "r/type=multipolygon,boundary,route,route_master",
+        ]
+    )
+    run_command(
+        [
+            "osmium",
+            "getparents",
+            "--add-self",
+            "--id-osm-file",
+            str(relation_ids),
+            "--output-format",
+            "pbf",
+            "--output",
+            str(parent_candidates),
+            str(source_file),
+        ]
+    )
+    run_command(
+        [
+            "osmium",
+            "tags-filter",
+            "--omit-referenced",
+            "--output-format",
+            "pbf",
+            "--output",
+            str(parent_ids),
+            str(parent_candidates),
+            "r/type=route_master",
+        ]
+    )
+    run_command(
+        [
+            "osmium",
+            "merge",
+            str(way_ids),
+            str(relation_ids),
+            str(parent_ids),
+            "--output-format",
+            "pbf",
+            "--output",
+            str(reference_ids),
+        ]
+    )
+    closure_status = run_command_allowing_status(
+        [
+            "osmium",
+            "getid",
+            "--add-referenced",
+            "--id-osm-file",
+            str(reference_ids),
+            "--output-format",
+            "pbf",
+            "--output",
+            str(closure),
+            str(source_file),
+        ],
+        allowed_statuses=frozenset({0, 1}),
+    )
+    if closure_status == 1:
+        print(
+            "Warning: source-region PBF lacks some externally referenced relation members; "
+            "the extract will retain all references available in the locked source.",
+            flush=True,
+        )
+    run_command(
+        [
+            "osmium",
+            "merge",
+            str(selection),
+            str(closure),
+            "--output-format",
+            "pbf",
+            "--output",
+            str(partial),
+        ]
+    )
+    return (
+        way_ids,
+        relation_ids,
+        parent_candidates,
+        parent_ids,
+        reference_ids,
+        closure,
+    )
+
+
+def _build_relation_polygon(
+    region: RelationPolygonRegionConfig, source_file: Path, partial: Path
+) -> tuple[Path, tuple[Path, ...]]:
+    boundary_pbf, sequence_file, polygon_file = _relation_polygon_files(partial)
+    temporary = (boundary_pbf, sequence_file, polygon_file)
+    for path in temporary:
+        path.unlink(missing_ok=True)
+    run_command(
+        [
+            "osmium",
+            "getid",
+            "--add-referenced",
+            "--verbose-ids",
+            "--output-format",
+            "pbf",
+            "--output",
+            str(boundary_pbf),
+            str(source_file),
+            f"r{region.relation_id}",
+        ]
+    )
+    run_command(
+        [
+            "osmium",
+            "export",
+            "--geometry-types",
+            "polygon",
+            "--attributes",
+            "id,type",
+            "--output-format",
+            "geojsonseq",
+            "--output",
+            str(sequence_file),
+            str(boundary_pbf),
+        ]
+    )
+    matches: list[dict[str, Any]] = []
+    with sequence_file.open(encoding="utf-8") as source:
+        for raw_line in source:
+            line = raw_line.lstrip("\x1e").strip()
+            if not line:
+                continue
+            feature = json.loads(line)
+            properties = feature.get("properties", {})
+            if (
+                properties.get("@type") == "relation"
+                and str(properties.get("@id")) == str(region.relation_id)
+            ):
+                matches.append(feature)
+    if len(matches) != 1 or not matches[0].get("geometry"):
+        raise ValueError(
+            f"Expected exactly one polygon geometry for OSM relation {region.relation_id}"
+        )
+    scope = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {
+                    "source": "openstreetmap",
+                    "osm_type": "relation",
+                    "osm_id": region.relation_id,
+                },
+                "geometry": matches[0]["geometry"],
+            }
+        ],
+    }
+    polygon_file.write_text(
+        json.dumps(scope, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    return polygon_file, temporary
+
+
+def _extract_metadata(
+    region: RelationPolygonRegionConfig, source: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "profile": asdict(region),
+        "source_version": str(source["version"]),
+        "source_checksum": str(source["checksum"]),
+    }
 
 
 def extract_region(region_name: str, *, force: bool = False, engine: Engine | None = None) -> Path:
@@ -181,28 +435,68 @@ def extract_region(region_name: str, *, force: bool = False, engine: Engine | No
         raise FileNotFoundError(f"Registered source file is missing: {source_file}")
     if sha256_file(source_file) != source["checksum"]:
         raise ValueError("Registered source file SHA-256 does not match metadata")
+    if isinstance(region, RelationPolygonRegionConfig) and (
+        str(source["version"]) != region.source_version
+        or str(source["checksum"]) != region.source_checksum
+    ):
+        raise ValueError(
+            f"Region {region.name!r} is locked to source {region.source_version} "
+            f"({region.source_checksum})"
+        )
 
     version = str(source["version"])
     output = root / "data/cache/osm" / version / f"{region.name}.osm.pbf"
     checksum_file = output.with_suffix(f"{output.suffix}.sha256")
+    metadata_file = output.with_suffix(f"{output.suffix}.metadata.json")
     if not force and output.is_file() and checksum_file.is_file():
         recorded = checksum_file.read_text(encoding="ascii").strip()
-        if recorded and sha256_file(output) == recorded:
+        metadata_matches = True
+        if isinstance(region, RelationPolygonRegionConfig):
+            metadata_matches = bool(
+                metadata_file.is_file()
+                and json.loads(metadata_file.read_text(encoding="utf-8"))
+                == _extract_metadata(region, source)
+            )
+        if recorded and sha256_file(output) == recorded and metadata_matches:
             print(f"Extract already current: {output} ({recorded})")
             return output
 
     output.parent.mkdir(parents=True, exist_ok=True)
     partial = output.with_name(f"{output.name}.part")
     partial.unlink(missing_ok=True)
+    temporary: tuple[Path, ...] = ()
     try:
-        run_command(_extract_command(region, source_file, partial))
+        polygon_file = None
+        if isinstance(region, RelationPolygonRegionConfig):
+            polygon_file, temporary = _build_relation_polygon(region, source_file, partial)
+        if isinstance(region, RelationPolygonRegionConfig):
+            selection = partial.with_name(f"{partial.name}.selection.osm.pbf")
+            selection.unlink(missing_ok=True)
+            temporary = (*temporary, selection)
+            run_command(
+                _extract_command(region, source_file, selection, polygon_file=polygon_file)
+            )
+            closure_files = _complete_relation_polygon_selection(
+                source_file, selection, partial
+            )
+            temporary = (*temporary, *closure_files)
+        else:
+            run_command(_extract_command(region, source_file, partial))
         validate_pbf(partial)
         checksum = sha256_file(partial)
         partial.replace(output)
         checksum_file.write_text(f"{checksum}\n", encoding="ascii")
+        if isinstance(region, RelationPolygonRegionConfig):
+            metadata_file.write_text(
+                json.dumps(_extract_metadata(region, source), indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
     except BaseException:
         partial.unlink(missing_ok=True)
         raise
+    finally:
+        for path in temporary:
+            path.unlink(missing_ok=True)
     print(f"Created {region.name} extract: {output}")
     print(f"SHA-256: {checksum}")
     return output
@@ -366,6 +660,41 @@ def _merge_work_tables(connection: Connection, source_id: int, run_id: int) -> d
     counts["updated"] = updated
     counts["skipped"] = counts["processed"] - inserted - updated
     return counts
+
+
+def _record_profile_memberships(
+    connection: Connection, source_id: int, profile: str, run_id: int
+) -> None:
+    """Record scope observation separately from the global OSM staging identity."""
+    for object_type, work, id_column in (
+        ("node", "staging._osm_nodes", "node_id"),
+        ("way", "staging._osm_ways", "way_id"),
+        ("relation", "staging._osm_relations", "relation_id"),
+    ):
+        connection.execute(
+            text(
+                f"""
+                INSERT INTO meta.osm_profile_memberships AS membership
+                    (source_id, profile, source_object_type, source_object_id,
+                     lifecycle_status, first_seen_import_run_id,
+                     last_seen_import_run_id, missing_since, created_at, updated_at)
+                SELECT :source_id, :profile, :object_type, work.{id_column}, 'present',
+                       :run_id, :run_id, NULL, now(), now()
+                FROM {work} AS work
+                ON CONFLICT (source_id, profile, source_object_type, source_object_id)
+                DO UPDATE SET lifecycle_status = 'present',
+                              last_seen_import_run_id = EXCLUDED.last_seen_import_run_id,
+                              missing_since = NULL,
+                              updated_at = now()
+                """
+            ),
+            {
+                "source_id": source_id,
+                "profile": profile,
+                "object_type": object_type,
+                "run_id": run_id,
+            },
+        )
 
 
 def _merge_relation_geometries(
@@ -661,10 +990,20 @@ def _merge_relation_geometries(
     return {str(row.assembly_status): int(row._mapping["count"]) for row in rows}
 
 
-def import_region(region_name: str, *, engine: Engine | None = None) -> dict[str, int]:
+def import_region(
+    region_name: str,
+    *,
+    engine: Engine | None = None,
+    _defer_completion: bool = False,
+) -> dict[str, int]:
     root = project_root()
     source_config = load_source(root)
     region: RegionConfig = load_region(region_name, root)
+    authoritative = isinstance(region, RelationPolygonRegionConfig) and region.authoritative
+    if authoritative and not _defer_completion:
+        raise ValueError(
+            f"Authoritative profile {region.name!r} must use the full refresh command"
+        )
     database = engine or get_engine()
     with database.begin() as connection:
         source = _registered_source(connection, source_config)
@@ -675,6 +1014,8 @@ def import_region(region_name: str, *, engine: Engine | None = None) -> dict[str
         source_id=int(source["id"]),
         source_version=str(source["version"]),
         checksum=str(source["checksum"]),
+        profile=region.name,
+        authoritative_snapshot=authoritative,
         details={"region": region.name, "extract": _relative_to_root(extract, root)},
     )
     started = datetime.now(UTC)
@@ -701,29 +1042,45 @@ def import_region(region_name: str, *, engine: Engine | None = None) -> dict[str
         )
         with database.begin() as connection:
             counts = _merge_work_tables(connection, int(source["id"]), run_id)
+            _record_profile_memberships(
+                connection, int(source["id"]), region.name, run_id
+            )
             counts["area_geometry_candidates"] = _work_count(
                 connection, "derived._osm_relation_geometries"
             )
             geometry_statuses = _merge_relation_geometries(connection, int(source["id"]), run_id)
             counts["relation_geometries"] = sum(geometry_statuses.values())
         duration = (datetime.now(UTC) - started).total_seconds()
-        finish_import_run(
-            database,
-            run_id,
-            status="success",
-            processed_count=counts["processed"],
-            inserted_count=counts["inserted"],
-            updated_count=counts["updated"],
-            skipped_count=counts["skipped"],
-            details={
-                "extract_checksum": extract_checksum,
-                "duration_seconds": duration,
-                "counts": counts,
-                "geometry_statuses": geometry_statuses,
-            },
-        )
-        print(json.dumps({"run_id": run_id, **counts}, indent=2))
-        return counts
+        run_details = {
+            "extract_checksum": extract_checksum,
+            "staging_duration_seconds": duration,
+            "counts": counts,
+            "geometry_statuses": geometry_statuses,
+        }
+        if _defer_completion:
+            stage_import_run(
+                database,
+                run_id,
+                processed_count=counts["processed"],
+                inserted_count=counts["inserted"],
+                updated_count=counts["updated"],
+                skipped_count=counts["skipped"],
+                details=run_details,
+            )
+        else:
+            finish_import_run(
+                database,
+                run_id,
+                status="success",
+                processed_count=counts["processed"],
+                inserted_count=counts["inserted"],
+                updated_count=counts["updated"],
+                skipped_count=counts["skipped"],
+                details=run_details,
+            )
+        result = {"run_id": run_id, **counts}
+        print(json.dumps(result, indent=2))
+        return result
     except BaseException as exc:
         finish_import_run(
             database,
@@ -738,6 +1095,245 @@ def import_region(region_name: str, *, engine: Engine | None = None) -> dict[str
             _cleanup_work_tables(database)
         except Exception as cleanup_error:
             print(f"Warning: could not remove OSM work tables: {cleanup_error}")
+
+
+def _finalize_authoritative_snapshot(
+    connection: Connection,
+    *,
+    source_id: int,
+    profile: str,
+    run_id: int,
+    authoritative_profiles: tuple[str, ...],
+    details: dict[str, Any],
+) -> dict[str, int]:
+    run = connection.execute(
+        text(
+            """
+            SELECT id FROM meta.import_runs
+            WHERE id=:run_id AND source_id=:source_id AND profile=:profile
+              AND authoritative_snapshot AND status='staged'
+            FOR UPDATE
+            """
+        ),
+        {"run_id": run_id, "source_id": source_id, "profile": profile},
+    ).one_or_none()
+    if run is None:
+        raise RuntimeError("Lifecycle finalization requires the staged authoritative run")
+
+    missing_memberships = int(
+        connection.execute(
+            text(
+                """
+                UPDATE meta.osm_profile_memberships
+                SET lifecycle_status='missing', missing_since=COALESCE(missing_since, now()),
+                    updated_at=now()
+                WHERE source_id=:source_id AND profile=:profile
+                  AND lifecycle_status='present' AND last_seen_import_run_id<>:run_id
+                RETURNING 1
+                """
+            ),
+            {"source_id": source_id, "profile": profile, "run_id": run_id},
+        ).rowcount
+        or 0
+    )
+    missing_bindings = int(
+        connection.execute(
+            text(
+                """
+                UPDATE catalog.object_sources AS binding
+                SET source_status='missing', missing_since=COALESCE(missing_since, now()),
+                    updated_at=now()
+                WHERE binding.source_id=:source_id AND binding.source_status='present'
+                  AND EXISTS (
+                    SELECT 1 FROM meta.osm_profile_memberships AS missing
+                    WHERE missing.source_id=binding.source_id
+                      AND missing.profile=:profile
+                      AND missing.source_object_type=binding.source_object_type
+                      AND missing.source_object_id=binding.source_object_id::bigint
+                      AND missing.lifecycle_status='missing'
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM meta.osm_profile_memberships AS present
+                    WHERE present.source_id=binding.source_id
+                      AND present.profile=ANY(:authoritative_profiles)
+                      AND present.source_object_type=binding.source_object_type
+                      AND present.source_object_id=binding.source_object_id::bigint
+                      AND present.lifecycle_status='present'
+                  )
+                RETURNING 1
+                """
+            ),
+            {
+                "source_id": source_id,
+                "profile": profile,
+                "authoritative_profiles": list(authoritative_profiles),
+            },
+        ).rowcount
+        or 0
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE catalog.object_category_sources AS category_source
+            SET status='inactive', updated_at=now()
+            FROM catalog.object_sources AS binding
+            WHERE category_source.object_source_id=binding.id
+              AND binding.source_id=:source_id AND binding.source_status='missing'
+            """
+        ),
+        {"source_id": source_id},
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE catalog.object_categories AS category
+            SET lifecycle_status=CASE WHEN EXISTS (
+                  SELECT 1 FROM catalog.object_category_sources AS source
+                  WHERE source.object_id=category.object_id
+                    AND source.category_key=category.category_key AND source.status='active'
+                ) THEN 'active' ELSE 'inactive' END,
+                updated_at=now()
+            WHERE EXISTS (
+              SELECT 1 FROM catalog.object_category_sources AS source
+              JOIN catalog.object_sources AS binding ON binding.id=source.object_source_id
+              WHERE source.object_id=category.object_id
+                AND source.category_key=category.category_key
+                AND binding.source_id=:source_id AND binding.source_status='missing'
+            )
+            """
+        ),
+        {"source_id": source_id},
+    )
+    inactive_objects = int(
+        connection.execute(
+            text(
+                """
+                UPDATE catalog.objects AS object
+                SET lifecycle_status=CASE WHEN EXISTS (
+                      SELECT 1 FROM catalog.object_sources AS remaining
+                      WHERE remaining.object_id=object.id AND remaining.source_status='present'
+                    ) THEN 'active' ELSE 'inactive' END,
+                    retired_at=NULL, updated_at=now()
+                WHERE object.lifecycle_status IN ('active','inactive')
+                  AND EXISTS (
+                    SELECT 1 FROM catalog.object_sources AS binding
+                    WHERE binding.object_id=object.id AND binding.source_id=:source_id
+                      AND binding.source_status='missing'
+                  )
+                RETURNING 1
+                """
+            ),
+            {"source_id": source_id},
+        ).rowcount
+        or 0
+    )
+    lifecycle = {
+        "missing_memberships": missing_memberships,
+        "missing_bindings": missing_bindings,
+        "affected_objects": inactive_objects,
+    }
+    final_details = {
+        **details,
+        "lifecycle": lifecycle,
+    }
+    result = connection.execute(
+        text(
+            """
+            UPDATE meta.import_runs
+            SET status='success', finished_at=now(), lifecycle_finalized_at=now(),
+                details=details || CAST(:details AS jsonb), updated_at=now()
+            WHERE id=:run_id AND status='staged'
+            """
+        ),
+        {"run_id": run_id, "details": json.dumps(final_details, default=str)},
+    )
+    if result.rowcount != 1:
+        raise RuntimeError(f"Could not complete authoritative import run {run_id}")
+    return lifecycle
+
+
+def refresh_region(region_name: str, *, engine: Engine | None = None) -> dict[str, Any]:
+    """Run the complete production-capable staging/canonical/category snapshot."""
+    from app.data.categories import run_osm_category_pipeline
+
+    root = project_root()
+    region = load_region(region_name, root)
+    if not isinstance(region, RelationPolygonRegionConfig) or not region.authoritative:
+        raise ValueError(
+            "Full refresh is only available for authoritative relation_polygon profiles"
+        )
+    database = engine or get_engine()
+    staging = import_region(region_name, engine=database, _defer_completion=True)
+    run_id = int(staging["run_id"])
+    started = datetime.now(UTC)
+    try:
+        with database.connect() as connection:
+            source_id = int(
+                connection.scalar(
+                    text("SELECT source_id FROM meta.import_runs WHERE id=:run_id"),
+                    {"run_id": run_id},
+                )
+            )
+        # The first full-city snapshot can add more than a million membership rows.
+        # Give candidate discovery current cardinality statistics instead of relying
+        # on asynchronous auto-analyze to arrive after its plan has been chosen.
+        with database.begin() as connection:
+            connection.execute(text("ANALYZE meta.osm_profile_memberships"))
+        category = run_osm_category_pipeline(
+            source_id,
+            run_id,
+            profile=region.name,
+            engine=database,
+        )
+        category_duration = (datetime.now(UTC) - started).total_seconds()
+        authoritative_profiles = tuple(
+            name
+            for name, configured in load_regions(root).items()
+            if isinstance(configured, RelationPolygonRegionConfig) and configured.authoritative
+        )
+        with database.begin() as connection:
+            lifecycle = _finalize_authoritative_snapshot(
+                connection,
+                source_id=source_id,
+                profile=region.name,
+                run_id=run_id,
+                authoritative_profiles=authoritative_profiles,
+                details={
+                    "category_duration_seconds": category_duration,
+                    "category": asdict(category),
+                },
+            )
+            for table in (
+                "staging.osm_nodes",
+                "staging.osm_ways",
+                "staging.osm_relations",
+                "derived.osm_relation_geometries",
+                "catalog.object_sources",
+                "catalog.objects",
+                "catalog.object_categories",
+            ):
+                connection.execute(text(f"ANALYZE {table}"))
+        result: dict[str, Any] = {
+            "run_id": run_id,
+            "staging": staging,
+            "category": asdict(category),
+            "lifecycle": lifecycle,
+        }
+        print(json.dumps(result, indent=2, default=str))
+        return result
+    except BaseException as exc:
+        finish_import_run(
+            database,
+            run_id,
+            status="failed",
+            error_count=1,
+            details={
+                "failed_stage": "canonical_category_or_finalization",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:2000],
+            },
+        )
+        raise
 
 
 def status(engine: Engine | None = None) -> list[dict[str, Any]]:

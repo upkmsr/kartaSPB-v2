@@ -5,7 +5,12 @@ import pytest
 from sqlalchemy import make_url
 
 from app.data.osm import pipeline
-from app.data.osm.config import BboxRegionConfig, RelationRegionConfig, SourceConfig
+from app.data.osm.config import (
+    BboxRegionConfig,
+    RelationPolygonRegionConfig,
+    RelationRegionConfig,
+    SourceConfig,
+)
 from app.data.osm.pipeline import _extract_command, _osm2pgsql_connection
 
 
@@ -71,6 +76,39 @@ def test_relation_extract_command_uses_recursive_references(tmp_path: Path) -> N
         str(source),
         "r337422",
         "r123",
+    ]
+
+
+def test_city_extract_command_uses_generated_polygon_for_targeted_reference_closure(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.osm.pbf"
+    partial = tmp_path / "spb_city.osm.pbf.part"
+    polygon = tmp_path / "spb_city.geojson"
+    profile = RelationPolygonRegionConfig(
+        name="spb_city",
+        type="relation_polygon",
+        relation_id=337422,
+        strategy="simple_then_complete_references",
+        authoritative=True,
+        source_version="test-v1",
+        source_checksum="a" * 64,
+        acceptance_ids=("w1",),
+        description="",
+    )
+
+    assert _extract_command(profile, source, partial, polygon_file=polygon) == [
+        "osmium",
+        "extract",
+        "--polygon",
+        str(polygon),
+        "--strategy",
+        "simple",
+        "--output",
+        str(partial),
+        "--output-format",
+        "pbf",
+        str(source),
     ]
 
 

@@ -13,5 +13,26 @@
     "type": "relation",
     "relation_ids": [337422],
     "description": "Reference-complete Saint Petersburg administrative hierarchy rooted at OSM relation 337422."
+  },
+  "spb_city": {
+    "type": "relation_polygon",
+    "relation_id": 337422,
+    "strategy": "simple_then_complete_references",
+    "authoritative": true,
+    "source_version": "20260921T231045Z",
+    "source_checksum": "ebd1ac7b344c091a9190089422c75b8b704eaaacdc5f93ab5046bab16732925f",
+    "acceptance_ids": [
+      "w315576917",
+      "w746814512",
+      "w1484281867",
+      "w78199509",
+      "w206259111",
+      "w1243420903",
+      "w113106874",
+      "w132911076",
+      "w107996505",
+      "w82141716"
+    ],
+    "description": "Authoritative production extract derived from the exact Saint Petersburg administrative boundary relation; no buffer."
   }
 }

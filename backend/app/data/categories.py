@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy import Engine, text
 
+from app.data.catalog import canonicalize_osm_objects
 from app.data.osm.config import project_root
 from app.db.session import get_engine
 
@@ -169,35 +170,84 @@ def _sync_taxonomy(connection: Any, categories: list[dict[str, Any]]) -> None:
 
 
 def discover_osm_category_candidates(
-    source_id: int, *, engine: Engine | None = None
+    source_id: int,
+    *,
+    profile: str | None = None,
+    import_run_id: int | None = None,
+    engine: Engine | None = None,
 ) -> list[tuple[str, int]]:
+    if (profile is None) != (import_run_id is None):
+        raise ValueError("profile and import_run_id must be provided together")
     _, rules = load_category_config()
     tag_keys = sorted({condition.tag for rule in rules for condition in rule.conditions})
     database = engine or get_engine()
+    if profile is None:
+        candidates_sql = """
+            SELECT 'node' AS source_object_type, n.osm_id, n.tags,
+                   'point' AS geometry_family, 'feature' AS object_kind
+            FROM staging.osm_nodes n
+            WHERE n.source_id=:source_id AND n.tags ?| :keys
+            UNION ALL
+            SELECT 'way', w.osm_id, w.tags,
+                   CASE WHEN GeometryType(w.geom)='LINESTRING' THEN 'line' ELSE 'polygon' END,
+                   'feature'
+            FROM staging.osm_ways w
+            WHERE w.source_id=:source_id AND w.tags ?| :keys AND w.geom IS NOT NULL
+            UNION ALL
+            SELECT 'relation', r.osm_id, r.tags, 'polygon',
+                   CASE WHEN g.relation_type='boundary' THEN 'boundary' ELSE 'feature' END
+            FROM staging.osm_relations r
+            JOIN derived.osm_relation_geometries g ON g.source_id=r.source_id
+              AND g.relation_id=r.osm_id AND g.assembly_status='assembled'
+            WHERE r.source_id=:source_id AND r.tags ?| :keys
+              AND g.relation_type IN ('multipolygon','boundary')
+        """
+    else:
+        # Drive the authoritative refresh from the exact observed snapshot.  Besides
+        # making scope provenance explicit, this avoids three broad staging scans
+        # with correlated membership probes on city-sized imports.
+        candidates_sql = """
+            SELECT 'node' AS source_object_type, n.osm_id, n.tags,
+                   'point' AS geometry_family, 'feature' AS object_kind
+            FROM meta.osm_profile_memberships m
+            JOIN staging.osm_nodes n ON n.source_id=m.source_id
+              AND n.osm_id=m.source_object_id
+            WHERE m.source_id=:source_id AND m.profile=:profile
+              AND m.source_object_type='node' AND m.lifecycle_status='present'
+              AND m.last_seen_import_run_id=:import_run_id AND n.tags ?| :keys
+            UNION ALL
+            SELECT 'way', w.osm_id, w.tags,
+                   CASE WHEN GeometryType(w.geom)='LINESTRING' THEN 'line' ELSE 'polygon' END,
+                   'feature'
+            FROM meta.osm_profile_memberships m
+            JOIN staging.osm_ways w ON w.source_id=m.source_id
+              AND w.osm_id=m.source_object_id
+            WHERE m.source_id=:source_id AND m.profile=:profile
+              AND m.source_object_type='way' AND m.lifecycle_status='present'
+              AND m.last_seen_import_run_id=:import_run_id AND w.tags ?| :keys
+              AND w.geom IS NOT NULL
+            UNION ALL
+            SELECT 'relation', r.osm_id, r.tags, 'polygon',
+                   CASE WHEN g.relation_type='boundary' THEN 'boundary' ELSE 'feature' END
+            FROM meta.osm_profile_memberships m
+            JOIN staging.osm_relations r ON r.source_id=m.source_id
+              AND r.osm_id=m.source_object_id
+            JOIN derived.osm_relation_geometries g ON g.source_id=r.source_id
+              AND g.relation_id=r.osm_id AND g.assembly_status='assembled'
+            WHERE m.source_id=:source_id AND m.profile=:profile
+              AND m.source_object_type='relation' AND m.lifecycle_status='present'
+              AND m.last_seen_import_run_id=:import_run_id AND r.tags ?| :keys
+              AND g.relation_type IN ('multipolygon','boundary')
+        """
     with database.connect() as connection:
         rows = connection.execute(
-            text(
-                """
-                SELECT 'node' AS source_object_type, n.osm_id, n.tags,
-                       'point' AS geometry_family, 'feature' AS object_kind
-                FROM staging.osm_nodes n WHERE n.source_id=:source_id AND n.tags ?| :keys
-                UNION ALL
-                SELECT 'way', w.osm_id, w.tags,
-                       CASE WHEN GeometryType(w.geom)='LINESTRING' THEN 'line' ELSE 'polygon' END,
-                       'feature'
-                FROM staging.osm_ways w WHERE w.source_id=:source_id AND w.tags ?| :keys
-                  AND w.geom IS NOT NULL
-                UNION ALL
-                SELECT 'relation', r.osm_id, r.tags, 'polygon',
-                       CASE WHEN g.relation_type='boundary' THEN 'boundary' ELSE 'feature' END
-                FROM staging.osm_relations r
-                JOIN derived.osm_relation_geometries g ON g.source_id=r.source_id
-                  AND g.relation_id=r.osm_id AND g.assembly_status='assembled'
-                WHERE r.source_id=:source_id AND r.tags ?| :keys
-                  AND g.relation_type IN ('multipolygon','boundary')
-                """
-            ),
-            {"source_id": source_id, "keys": tag_keys},
+            text(candidates_sql),
+            {
+                "source_id": source_id,
+                "keys": tag_keys,
+                "profile": profile,
+                "import_run_id": import_run_id,
+            },
         )
         result: list[tuple[str, int]] = []
         for row in rows:
@@ -268,6 +318,10 @@ def bulk_create_osm_objects(
             'present',p.name,p.geom,'{}'::jsonb,p.payload_hash,p.quality,0,
             'source_identity',1.000,:run_id,:run_id,:run_id
           FROM prepared p JOIN inserted i ON i.id=p.id RETURNING id,object_id
+        ), initialized AS (
+          UPDATE catalog.objects o
+          SET name_source_id=b.id,geometry_source_id=b.id,updated_at=now()
+          FROM bindings b WHERE b.object_id=o.id RETURNING o.id
         )
         SELECT count(*) AS created FROM bindings
     """)
@@ -286,13 +340,6 @@ def bulk_create_osm_objects(
                 "payload": payload, "source_id": source_id, "run_id": import_run_id,
                 "source_version": source_version,
             }) or 0)
-            connection.execute(text("""
-                UPDATE catalog.objects o
-                SET name_source_id=b.id,geometry_source_id=b.id,updated_at=now()
-                FROM catalog.object_sources b
-                WHERE b.source_id=:source_id AND b.object_id=o.id
-                  AND (o.name_source_id IS NULL OR o.geometry_source_id IS NULL)
-            """), {"source_id": source_id})
     return created
 
 
@@ -302,15 +349,20 @@ def apply_categories(
     *,
     engine: Engine | None = None,
     binding_ids: list[int] | None = None,
+    profile: str | None = None,
+    scope_import_run_id: int | None = None,
     chunk_size: int = 5000,
 ) -> tuple[int, int]:
+    if (profile is None) != (scope_import_run_id is None):
+        raise ValueError("profile and scope_import_run_id must be provided together")
     categories, rules = load_category_config()
     database = engine or get_engine()
     processed = matches = 0
     last_id = 0
+    with database.begin() as connection:
+        _sync_taxonomy(connection, categories)
     while True:
         with database.begin() as connection:
-            _sync_taxonomy(connection, categories)
             rows = connection.execute(
                 text(
                     """
@@ -331,6 +383,13 @@ def apply_categories(
                       AND r.source_id=b.source_id AND r.osm_id=b.source_object_id::bigint
                     WHERE b.source_id=:source_id AND b.source_status='present' AND b.id>:last_id
                       AND (:all_bindings OR b.id = ANY(:binding_ids))
+                      AND (CAST(:profile AS text) IS NULL OR EXISTS (
+                        SELECT 1 FROM meta.osm_profile_memberships m
+                        WHERE m.source_id=b.source_id AND m.profile=:profile
+                          AND m.source_object_type=b.source_object_type
+                          AND m.source_object_id=b.source_object_id::bigint
+                          AND m.lifecycle_status='present'
+                          AND m.last_seen_import_run_id=:scope_import_run_id))
                     ORDER BY b.id LIMIT :chunk_size
                     """
                 ),
@@ -340,6 +399,8 @@ def apply_categories(
                     "chunk_size": chunk_size,
                     "all_bindings": binding_ids is None,
                     "binding_ids": binding_ids or [],
+                    "profile": profile,
+                    "scope_import_run_id": scope_import_run_id,
                 },
             ).all()
             if not rows:
@@ -374,14 +435,8 @@ def apply_categories(
                             "run_id": import_run_id,
                         }
                     )
-            connection.execute(
-                text(
-                    "UPDATE catalog.object_category_sources SET status='inactive', updated_at=now() WHERE object_source_id=ANY(:ids)"
-                ),
-                {"ids": row_ids},
-            )
+            evidence_payload = json.dumps(active_keys, default=str)
             if active_keys:
-                evidence_payload = json.dumps(active_keys, default=str)
                 connection.execute(
                     text("""
                     INSERT INTO catalog.object_category_sources
@@ -399,6 +454,27 @@ def apply_categories(
                 """),
                     {"payload": evidence_payload},
                 )
+            # Deactivate only assignments no longer produced by the current rules.
+            # The previous inactive-then-active cycle rewrote every unchanged row
+            # twice and generated excessive WAL on city-sized snapshots.
+            connection.execute(
+                text("""
+                WITH expected AS (
+                  SELECT x.object_source_id,x.category_key,x.rule_id
+                  FROM jsonb_to_recordset(CAST(:payload AS jsonb)) x(
+                    object_source_id bigint,category_key text,rule_id text)
+                )
+                UPDATE catalog.object_category_sources current
+                SET status='inactive',updated_at=now()
+                WHERE current.object_source_id=ANY(:ids) AND current.status='active'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM expected
+                    WHERE expected.object_source_id=current.object_source_id
+                      AND expected.category_key=current.category_key
+                      AND expected.rule_id=current.rule_id)
+                """),
+                {"ids": row_ids, "payload": evidence_payload},
+            )
             existing_affected = connection.execute(
                 text(
                     "SELECT DISTINCT object_id::text, category_key FROM catalog.object_category_sources WHERE object_source_id=ANY(:ids)"
@@ -422,6 +498,8 @@ def apply_categories(
                     FROM jsonb_to_recordset(CAST(:payload AS jsonb)) x(object_id text,category_key text)
                     ON CONFLICT (object_id,category_key) DO UPDATE SET
                       lifecycle_status=excluded.lifecycle_status,updated_at=now()
+                    WHERE object_categories.lifecycle_status IS DISTINCT FROM
+                          excluded.lifecycle_status
                 """),
                     {"payload": payload},
                 )
@@ -429,16 +507,38 @@ def apply_categories(
 
 
 def run_osm_category_pipeline(
-    source_id: int, import_run_id: int, *, engine: Engine | None = None, chunk_size: int = 10000
+    source_id: int,
+    import_run_id: int,
+    *,
+    profile: str | None = None,
+    engine: Engine | None = None,
+    chunk_size: int = 10000,
 ) -> CategoryRunResult:
     started = time.monotonic()
     database = engine or get_engine()
-    identities = discover_osm_category_candidates(source_id, engine=database)
-    created = bulk_create_osm_objects(
-        source_id, import_run_id, identities, engine=database,
-        chunk_size=max(chunk_size, 50000),
+    identities = discover_osm_category_candidates(
+        source_id,
+        profile=profile,
+        import_run_id=import_run_id if profile else None,
+        engine=database,
     )
-    processed, matches = apply_categories(source_id, import_run_id, engine=database)
+    created = 0
+    for offset in range(0, len(identities), chunk_size):
+        result = canonicalize_osm_objects(
+            source_id,
+            import_run_id,
+            identities[offset : offset + chunk_size],
+            engine=database,
+        )
+        created += result.created
+    processed, matches = apply_categories(
+        source_id,
+        import_run_id,
+        profile=profile,
+        scope_import_run_id=import_run_id if profile else None,
+        engine=database,
+        chunk_size=chunk_size,
+    )
     with database.connect() as connection:
         assignments = int(
             connection.scalar(

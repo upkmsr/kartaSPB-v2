@@ -5,6 +5,7 @@ import pytest
 
 from app.data.osm.config import (
     BboxRegionConfig,
+    RelationPolygonRegionConfig,
     RelationRegionConfig,
     load_region,
     load_regions,
@@ -32,6 +33,11 @@ def test_region_configuration_contains_bbox_and_relation_profiles() -> None:
     assert "not an official administrative boundary" in regions["spb_lo"].description.lower()
     assert isinstance(regions["spb_districts"], RelationRegionConfig)
     assert regions["spb_districts"].relation_ids == (337422,)
+    assert isinstance(regions["spb_city"], RelationPolygonRegionConfig)
+    assert regions["spb_city"].relation_id == 337422
+    assert regions["spb_city"].authoritative is True
+    assert regions["spb_city"].strategy == "simple_then_complete_references"
+    assert len(regions["spb_city"].acceptance_ids) == 10
 
 
 def test_invalid_region_bbox_is_rejected(tmp_path: Path) -> None:
@@ -68,6 +74,32 @@ def test_unknown_region_profile_type_is_rejected(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="unknown profile type"):
+        load_region("bad", tmp_path)
+
+
+def test_relation_polygon_requires_targeted_closure_strategy_and_source_lock(
+    tmp_path: Path,
+) -> None:
+    config_dir = tmp_path / "config/osm"
+    config_dir.mkdir(parents=True)
+    (config_dir / "regions.json").write_text(
+        json.dumps(
+            {
+                "bad": {
+                    "type": "relation_polygon",
+                    "relation_id": 337422,
+                    "strategy": "simple",
+                    "authoritative": True,
+                    "source_version": "v1",
+                    "source_checksum": "a" * 64,
+                    "acceptance_ids": [],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="simple_then_complete_references"):
         load_region("bad", tmp_path)
 
 

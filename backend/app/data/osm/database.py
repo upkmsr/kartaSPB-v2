@@ -80,6 +80,8 @@ def start_import_run(
     source_id: int,
     source_version: str | None,
     checksum: str | None,
+    profile: str | None = None,
+    authoritative_snapshot: bool = False,
     details: dict[str, Any],
 ) -> int:
     with engine.begin() as connection:
@@ -88,9 +90,11 @@ def start_import_run(
                 text(
                     """
                     INSERT INTO meta.import_runs
-                        (source_id, status, started_at, source_version, checksum, details)
+                        (source_id, status, started_at, source_version, checksum, profile,
+                         authoritative_snapshot, details)
                     VALUES
-                        (:source_id, 'running', now(), :source_version, :checksum,
+                        (:source_id, 'running', now(), :source_version, :checksum, :profile,
+                         :authoritative_snapshot,
                          CAST(:details AS jsonb))
                     RETURNING id
                     """
@@ -99,10 +103,51 @@ def start_import_run(
                     "source_id": source_id,
                     "source_version": source_version,
                     "checksum": checksum,
+                    "profile": profile,
+                    "authoritative_snapshot": authoritative_snapshot,
                     "details": json.dumps(details),
                 },
             )
         )
+
+
+def stage_import_run(
+    engine: Engine,
+    run_id: int,
+    *,
+    processed_count: int,
+    inserted_count: int,
+    updated_count: int,
+    skipped_count: int,
+    details: dict[str, Any],
+) -> None:
+    """Publish raw staging completion without authorizing lifecycle finalization."""
+    with engine.begin() as connection:
+        result = connection.execute(
+            text(
+                """
+                UPDATE meta.import_runs
+                SET status = 'staged',
+                    processed_count = :processed_count,
+                    inserted_count = :inserted_count,
+                    updated_count = :updated_count,
+                    skipped_count = :skipped_count,
+                    details = details || CAST(:details AS jsonb),
+                    updated_at = now()
+                WHERE id = :run_id AND status = 'running'
+                """
+            ),
+            {
+                "run_id": run_id,
+                "processed_count": processed_count,
+                "inserted_count": inserted_count,
+                "updated_count": updated_count,
+                "skipped_count": skipped_count,
+                "details": json.dumps(details),
+            },
+        )
+        if result.rowcount != 1:
+            raise RuntimeError(f"Import run {run_id} is not in running state")
 
 
 def finish_import_run(

@@ -93,16 +93,13 @@ MAP_FEATURE_IDS_SPATIAL_FIRST_SQL = text(
         WHERE object.lifecycle_status = 'active'
           AND object.geom && envelope.geom
           AND ST_Intersects(object.geom, envelope.geom)
-    ), category_ids AS MATERIALIZED (
-        SELECT DISTINCT category.object_id
-        FROM catalog.object_categories AS category
-        WHERE category.lifecycle_status = 'active'
-          AND category.category_key = ANY(:categories)
     )
-    SELECT candidate.id
+    SELECT DISTINCT candidate.id
     FROM spatial_objects AS candidate
-    JOIN category_ids AS selected_category
+    JOIN catalog.object_categories AS selected_category
       ON selected_category.object_id = candidate.id
+     AND selected_category.lifecycle_status = 'active'
+     AND selected_category.category_key = ANY(:categories)
     LIMIT :fetch_limit
     """
 )
@@ -151,16 +148,13 @@ def _district_feature_ids_sql(*, spatial_first: bool, multiple: bool) -> TextCla
                   AND ST_Intersects(object.geom,envelope.geom)
                   AND object.geom && scope.geom
                   AND ST_Intersects(object.geom,scope.geom)
-            ), category_ids AS MATERIALIZED (
-                SELECT DISTINCT category.object_id
-                FROM catalog.object_categories AS category
-                WHERE category.lifecycle_status='active'
-                  AND category.category_key=ANY(:categories)
             )
-            SELECT candidate.id
+            SELECT DISTINCT candidate.id
             FROM spatial_objects AS candidate
-            JOIN category_ids AS selected_category
+            JOIN catalog.object_categories AS selected_category
               ON selected_category.object_id=candidate.id
+             AND selected_category.lifecycle_status='active'
+             AND selected_category.category_key=ANY(:categories)
             LIMIT :fetch_limit
             """
         )

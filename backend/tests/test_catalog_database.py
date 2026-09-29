@@ -348,6 +348,51 @@ def test_canonical_identity_lifecycle_geometry_and_route_exclusion() -> None:
         assert all(row.last_changed_import_run_id == first_run for row in repeated)
         assert revisions == [1, 1, 1, 1]
 
+        reactivation_run = create_successful_run(engine, source_id)
+        reactivated_id = stable_ids[("way", "1002")]
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE catalog.object_sources
+                    SET source_status='missing',missing_since=now()
+                    WHERE source_id=:source_id AND source_object_type='way'
+                      AND source_object_id='1002'
+                    """
+                ),
+                {"source_id": source_id},
+            )
+            connection.execute(
+                text(
+                    "UPDATE catalog.objects SET lifecycle_status='inactive',retired_at=now() "
+                    "WHERE id=:object_id"
+                ),
+                {"object_id": reactivated_id},
+            )
+        reactivated = canonicalize_osm_objects(
+            source_id, reactivation_run, [("way", 1002)], engine=engine
+        )
+        assert reactivated.unchanged == 1
+        with engine.connect() as connection:
+            reappeared = connection.execute(
+                text(
+                    """
+                    SELECT binding.object_id,binding.source_status,binding.missing_since,
+                           object.lifecycle_status,object.retired_at
+                    FROM catalog.object_sources binding
+                    JOIN catalog.objects object ON object.id=binding.object_id
+                    WHERE binding.source_id=:source_id AND binding.source_object_type='way'
+                      AND binding.source_object_id='1002'
+                    """
+                ),
+                {"source_id": source_id},
+            ).one()
+        assert reappeared.object_id == reactivated_id
+        assert reappeared.source_status == "present"
+        assert reappeared.missing_since is None
+        assert reappeared.lifecycle_status == "active"
+        assert reappeared.retired_at is None
+
         third_run = create_successful_run(engine, source_id)
         with engine.begin() as connection:
             connection.execute(

@@ -6,6 +6,7 @@ from app.db.models import (
     ImportRun,
     ImportRunStatus,
     ObjectSource,
+    OsmProfileMembership,
     OsmRelationGeometry,
 )
 
@@ -31,8 +32,22 @@ def test_import_run_model_tracks_import_outcome() -> None:
     assert set(ImportRunStatus) == {
         ImportRunStatus.PENDING,
         ImportRunStatus.RUNNING,
+        ImportRunStatus.STAGED,
         ImportRunStatus.SUCCESS,
         ImportRunStatus.FAILED,
+    }
+    assert {"profile", "authoritative_snapshot", "lifecycle_finalized_at"} <= {
+        column.name for column in ImportRun.__table__.columns
+    }
+
+
+def test_osm_profile_membership_separates_scope_from_identity() -> None:
+    assert OsmProfileMembership.__table__.schema == "meta"
+    assert {column.name for column in OsmProfileMembership.__table__.primary_key.columns} == {
+        "source_id",
+        "profile",
+        "source_object_type",
+        "source_object_id",
     }
 
 

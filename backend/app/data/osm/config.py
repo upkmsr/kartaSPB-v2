@@ -33,7 +33,20 @@ class RelationRegionConfig:
     description: str
 
 
-type RegionConfig = BboxRegionConfig | RelationRegionConfig
+@dataclass(frozen=True)
+class RelationPolygonRegionConfig:
+    name: str
+    type: Literal["relation_polygon"]
+    relation_id: int
+    strategy: Literal["simple_then_complete_references"]
+    authoritative: bool
+    source_version: str
+    source_checksum: str
+    acceptance_ids: tuple[str, ...]
+    description: str
+
+
+type RegionConfig = BboxRegionConfig | RelationRegionConfig | RelationPolygonRegionConfig
 
 
 def project_root() -> Path:
@@ -135,6 +148,65 @@ def load_regions(root: Path | None = None) -> dict[str, RegionConfig]:
                 name=name,
                 type="relation",
                 relation_ids=relation_ids,
+                description=description,
+            )
+        elif profile_type == "relation_polygon":
+            expected = {
+                "type",
+                "relation_id",
+                "strategy",
+                "authoritative",
+                "source_version",
+                "source_checksum",
+                "acceptance_ids",
+                "description",
+            }
+            unexpected = set(raw_value) - expected
+            if unexpected:
+                raise ValueError(
+                    f"Region {name!r} relation_polygon profile has incompatible fields: "
+                    f"{sorted(unexpected)}"
+                )
+            relation_id = raw_value.get("relation_id")
+            if (
+                isinstance(relation_id, bool)
+                or not isinstance(relation_id, int)
+                or relation_id <= 0
+            ):
+                raise ValueError(f"Region {name!r} relation_id must be a positive integer")
+            strategy = raw_value.get("strategy")
+            if strategy != "simple_then_complete_references":
+                raise ValueError(
+                    f"Region {name!r} must use simple_then_complete_references"
+                )
+            source_version = raw_value.get("source_version")
+            source_checksum = raw_value.get("source_checksum")
+            if not isinstance(source_version, str) or not source_version:
+                raise ValueError(f"Region {name!r} must lock source_version")
+            if (
+                not isinstance(source_checksum, str)
+                or len(source_checksum) != 64
+                or any(character not in "0123456789abcdef" for character in source_checksum)
+            ):
+                raise ValueError(f"Region {name!r} must lock a lowercase SHA-256 source_checksum")
+            raw_acceptance_ids = raw_value.get("acceptance_ids")
+            if not isinstance(raw_acceptance_ids, list) or any(
+                not isinstance(value, str)
+                or len(value) < 2
+                or value[0] not in "nwr"
+                or not value[1:].isdigit()
+                for value in raw_acceptance_ids
+            ):
+                raise ValueError(f"Region {name!r} has invalid acceptance_ids")
+            regions[name] = RelationPolygonRegionConfig(
+                name=name,
+                type="relation_polygon",
+                relation_id=relation_id,
+                strategy="simple_then_complete_references",
+                authoritative=bool(raw_value.get("authoritative", False)),
+                source_version=source_version,
+                source_checksum=source_checksum,
+                acceptance_ids=tuple(raw_acceptance_ids),
                 description=description,
             )
         else:

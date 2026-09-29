@@ -1,5 +1,7 @@
+from inspect import getsource
 from uuid import UUID
 
+from app.data.catalog import _load_candidates
 from app.data.map_catalog import (
     MAP_FEATURE_IDS_CATEGORY_FIRST_SQL,
     MAP_FEATURE_IDS_MULTI_DISTRICT_SPATIAL_FIRST_SQL,
@@ -33,8 +35,9 @@ def test_dense_transport_categories_use_spatial_first_map_query() -> None:
     assert feature_ids_query(("nature.park",), ()) is MAP_FEATURE_IDS_CATEGORY_FIRST_SQL
     stop_sql = str(feature_ids_query(("transport.stop",), ()))
     assert "spatial_objects AS MATERIALIZED" in stop_sql
-    assert "category_ids AS MATERIALIZED" in stop_sql
-    assert "JOIN category_ids AS selected_category" in stop_sql
+    assert "category_ids AS MATERIALIZED" not in stop_sql
+    assert "JOIN catalog.object_categories AS selected_category" in stop_sql
+    assert "selected_category.object_id = candidate.id" in stop_sql
 
 
 def test_search_query_builds_indexable_candidate_branches_before_geometry() -> None:
@@ -50,3 +53,15 @@ def test_search_query_builds_indexable_candidate_branches_before_geometry() -> N
     assert "JOIN catalog.objects AS object ON object.id = result.id" in sql
     assert sql.index("candidate_ids AS MATERIALIZED") < sql.index("ranked AS MATERIALIZED")
     assert sql.index("ranked AS MATERIALIZED") < sql.index("top_results AS MATERIALIZED")
+
+
+def test_canonical_candidate_join_keeps_staging_identity_indexes_usable() -> None:
+    source = getsource(_load_candidates)
+
+    assert "source_object_id bigint" in source
+    assert "requested.source_object_id = node.osm_id" in source
+    assert "requested.source_object_id = way.osm_id" in source
+    assert "requested.source_object_id = relation.osm_id" in source
+    assert "requested.source_object_id = node.osm_id::text" not in source
+    assert "requested.source_object_id = way.osm_id::text" not in source
+    assert "requested.source_object_id = relation.osm_id::text" not in source
