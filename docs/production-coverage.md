@@ -1,7 +1,7 @@
 # Saint Petersburg production coverage
 
-Status: implementation and isolated rehearsal accepted; production import is pending
-the explicit `F5.5-S3R PRODUCTION IMPORT` approval gate.
+Status: production import and physical visual QA accepted on 2026-09-29. The
+authoritative `spb_city` snapshot is active in the main database.
 
 ## Locked source and scope
 
@@ -118,12 +118,92 @@ concurrency was eliminated, and both accepted end-to-end runs then completed wit
 database crash, restart, or OOM. Observed database memory was about 1.63 GiB under the
 3.81 GiB container limit; global PostgreSQL memory settings were not changed.
 
+## Accepted production execution
+
+The main database was upgraded from `20260925_0007` to `20260928_0008` only after the
+rehearsal, implementation push, green CI, verified backup, and explicit production
+approval. Production refresh run `327` used the locked source and cached extract
+checksums above. It completed with status `success`, `authoritative_snapshot=true`, and
+`lifecycle_finalized_at=2026-09-29T09:48:22.320812Z`. PostgreSQL remained healthy with
+zero container restarts and no OOM.
+
+| Measure | Production result |
+|---|---:|
+| Started | `2026-09-29T09:24:54.161435Z` |
+| Completed | `2026-09-29T09:48:22.320812Z` |
+| Total wall time | 1,408.16 s (23:28.16) |
+| Raw osm2pgsql phase | 143 s |
+| Staging + derived phase | 676.57 s |
+| Canonical + category phase | 731.42 s |
+| Peak observed production DB memory | about 1.36 GiB of 3.81 GiB available |
+| Run identities | 1,372,973 |
+| Inserted / updated / unchanged | 575,572 / 1,129 / 796,272 |
+| Run nodes / ways / relations / members | 471,068 / 849,739 / 52,166 / 600,689 |
+| Relation geometries | 41,317 |
+| Category candidates | 407,544 |
+| Canonical objects created | 160,284 |
+| Bindings processed | 407,546 |
+| Rule matches / active assignments | 411,346 / 417,332 |
+| Missing memberships / bindings / affected objects | 0 / 0 / 0 |
+
+The current instrumentation records the raw osm2pgsql timing, the complete
+staging/derived phase, and the combined canonical/category phase. It does not fabricate
+separate derived, canonical, category, or finalization sub-timings; lifecycle
+finalization is the final atomic transaction at the recorded completion timestamp.
+Post-import `ANALYZE` was run on the affected staging, derived, provenance, canonical,
+and category tables.
+
+Final main-database counts are:
+
+| Measure | Before S3R | After S3R |
+|---|---:|---:|
+| Staging nodes | 322,884 | 481,740 |
+| Staging ways | 478,268 | 870,762 |
+| Staging relations | 29,264 | 53,486 |
+| Relation members | 307,268 | 611,123 |
+| Derived relation geometries | 22,693 | 42,472 |
+| Active canonical objects | 257,047 | 417,331 |
+| Source bindings | 257,047 | 417,331 |
+| Category assignment rows | 257,051 | 417,336 (417,332 active) |
+| Inactive canonical objects | 0 | 0 |
+| Database size | 1,120 MB | 1,858 MB |
+
+There are zero duplicate source identities, category assignments, or category
+provenance keys. Four historical category rows are inactive after deterministic rule
+reconciliation; their canonical objects remain active and this is not object lifecycle
+loss. All six established canonical UUID controls and all 18 district public/canonical
+bindings are unchanged. All ten remote acceptance ways have active bindings and the
+expected `education.school` or `transport.road` category.
+
 ## Coverage and runtime acceptance
 
 Exact `ST_Intersects` counts populate all 18 districts. Each district's total is within
 1% of the S3 `spb_lo` rule-equivalent reference. Small larger percentage differences in
 individual low-count water/park cells come from exact no-buffer boundary selection versus
 the coarse reference bbox; known non-exhaustive water semantics remain unchanged.
+
+Final production matrix (active non-boundary objects and active category assignments):
+
+| District | Total | School | Kindergarten | Pharmacy | Hospital | Clinic | Park | Water | Stop | Road |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Адмиралтейский | 18,349 | 60 | 73 | 111 | 13 | 29 | 127 | 50 | 404 | 17,482 |
+| Василеостровский | 17,425 | 57 | 59 | 109 | 9 | 28 | 142 | 32 | 488 | 16,501 |
+| Выборгский | 30,199 | 92 | 140 | 258 | 25 | 90 | 93 | 218 | 1,220 | 28,064 |
+| Калининский | 24,188 | 71 | 117 | 169 | 11 | 43 | 70 | 59 | 910 | 22,738 |
+| Кировский | 17,959 | 51 | 81 | 129 | 4 | 26 | 85 | 133 | 640 | 16,810 |
+| Колпинский | 12,051 | 36 | 59 | 62 | 7 | 6 | 48 | 308 | 548 | 10,977 |
+| Красногвардейский | 22,689 | 66 | 101 | 167 | 5 | 42 | 66 | 132 | 872 | 21,238 |
+| Красносельский | 24,301 | 68 | 110 | 144 | 6 | 45 | 49 | 434 | 934 | 22,512 |
+| Кронштадтский | 4,727 | 11 | 11 | 15 | 5 | 3 | 42 | 82 | 140 | 4,418 |
+| Курортный | 14,478 | 18 | 30 | 39 | 12 | 6 | 73 | 311 | 671 | 13,318 |
+| Московский | 32,099 | 70 | 116 | 183 | 6 | 54 | 120 | 152 | 820 | 30,578 |
+| Невский | 30,469 | 90 | 164 | 220 | 14 | 43 | 84 | 98 | 903 | 28,854 |
+| Петроградский | 15,679 | 46 | 61 | 69 | 11 | 56 | 109 | 110 | 343 | 14,874 |
+| Петродворцовый | 17,645 | 29 | 36 | 57 | 7 | 13 | 73 | 448 | 704 | 16,278 |
+| Приморский | 34,873 | 110 | 155 | 288 | 10 | 73 | 92 | 361 | 1,179 | 32,606 |
+| Пушкинский | 25,657 | 58 | 72 | 81 | 8 | 21 | 97 | 544 | 788 | 23,988 |
+| Фрунзенский | 28,416 | 59 | 104 | 170 | 5 | 25 | 78 | 49 | 692 | 27,234 |
+| Центральный | 23,180 | 70 | 85 | 133 | 12 | 74 | 129 | 44 | 500 | 22,133 |
 
 The five previously empty remote API controls now return 40, 51, 63, 39, and 19 features
 for Kolpinsky, Kronshtadtsky, Kurortny, Petrodvortsovy, and Pushkinsky respectively.
@@ -138,13 +218,32 @@ materializing all road category IDs was fixed by joining the bounded spatial can
 set through the `(object_id, category_key)` key. The representative zoom-16 road request
 improved from 4-7 seconds to 0.14-0.18 seconds while returning the same 319 features.
 
+Production API acceptance returned HTTP 200 for every remote and central control. The
+remote counts changed from `0 / 0 / 0 / 0 / 2` to `40 / 51 / 63 / 39 / 19`; the three
+central controls remained `149 / 100 / 162`. Observed map latency was 0.14-0.82 seconds.
+All five district-scoped remote search controls returned their expected named schools;
+the standard `школа`, `аптека`, `парк`, `невский`, and `энергетиков` controls returned
+results in 0.08-0.33 seconds.
+
+Physical visual QA passed at 1280x800, 1440x900, and 1920x1080. Remote districts now
+contain ordinary objects and roads, the old smoke cutoff is no longer apparent, central
+districts still render normally, and district overlay, Layers, search, ObjectCard, and
+map click remain functional.
+
+Post-production regression passed: 90 backend/ingest tests, 64 frontend tests, Ruff,
+strict mypy, Alembic model/migration parity, ESLint, TypeScript, ingest-tooling build and
+version checks, production frontend build, and the MapLibre worker asset check.
+
 ## Production backup and rollback
 
-After approval, create a custom-format `pg_dump` outside the repository before applying
-the migration or running production DML. Record path, size, timestamp, and SHA-256;
-validate it with `pg_restore --list`, and restore-check it into a temporary database when
-resources permit. Also record staging, derived, canonical, category, district, UUID,
-remote API, and central API baselines.
+The verified pre-production custom-format backup remains outside the repository at
+`/private/tmp/kartaspb_s3r_preprod_20260929T091258Z.dump`. It is 150,227,266 bytes,
+was created at `2026-09-29T09:13:48Z`, and has SHA-256
+`87236cbd41f60a219cd910a822e0a315751b2bc101420cdb1a9126fe0cd2c1c9`.
+`pg_restore --list` produced a valid 168-entry manifest. A full restore into a temporary
+database succeeded, and representative staging, derived, canonical, binding, and
+category counts exactly matched the pre-import main database. The temporary restore
+database was removed; the backup itself was retained.
 
 If extraction or refresh fails before finalization, stop and diagnose; do not run manual
 absence updates. Consider a full restore only for identity corruption, unexplained data
