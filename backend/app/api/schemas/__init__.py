@@ -9,6 +9,8 @@ from app.api.schemas.districts import (
 from app.api.schemas.map import (
     ErrorDetail,
     ErrorResponse,
+    FacilityMember,
+    FacilityRepresentation,
     GeoJSONFeature,
     GeoJSONFeatureCollection,
     GeoJSONGeometry,
@@ -27,6 +29,8 @@ __all__ = [
     "DistrictGeometryProperties",
     "ErrorDetail",
     "ErrorResponse",
+    "FacilityMember",
+    "FacilityRepresentation",
     "GeoJSONFeature",
     "GeoJSONFeatureCollection",
     "GeoJSONGeometry",

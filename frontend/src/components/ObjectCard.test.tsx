@@ -25,6 +25,27 @@ it("renders canonical details and compact provenance without internals", () => {
               geometry_quality: "raw",
             },
           ],
+          facility: {
+            id: "9f3f27a5-950f-5c24-adce-5fe4db2c36c7",
+            category_key: "healthcare.clinic",
+            representative_object_id: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+            display_object_id: "0014437e-092b-479f-a006-10c926604682",
+            analysis_object_id: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+            members: [
+              {
+                canonical_id: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+                geometry_role: "POINT",
+                source_type: "node",
+                source_object_id: "339394777",
+              },
+              {
+                canonical_id: "0014437e-092b-479f-a006-10c926604682",
+                geometry_role: "BUILDING",
+                source_type: "way",
+                source_object_id: "751143097",
+              },
+            ],
+          },
         },
       }}
     />,
@@ -32,7 +53,10 @@ it("renders canonical details and compact provenance without internals", () => {
 
   expect(screen.getByRole("heading", { name: "Озерки" })).toBeInTheDocument();
   expect(screen.getByText("Аптеки")).toBeInTheDocument();
-  expect(screen.getByText("node 339394777")).toBeInTheDocument();
+  expect(screen.getAllByText("node 339394777")).toHaveLength(2);
+  expect(screen.getByLabelText("Логическое представление")).toBeInTheDocument();
+  expect(screen.getByText("2 исходных объекта")).toBeInTheDocument();
+  expect(screen.getByText("BUILDING")).toBeInTheDocument();
   expect(screen.queryByText(/payload_hash|import_run|hidden/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Закрыть карточку" }));
   expect(onClose).toHaveBeenCalledOnce();

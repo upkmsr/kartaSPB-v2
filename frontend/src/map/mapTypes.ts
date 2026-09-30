@@ -20,6 +20,10 @@ export type GeoJSONGeometry =
 
 export type MapFeatureProperties = {
   canonical_id: string;
+  facility_entity_id?: string | null;
+  representative_canonical_id?: string;
+  display_canonical_id?: string;
+  member_canonical_ids?: string[];
   name: string | null;
   categories: string[];
   object_kind: string;
@@ -49,6 +53,23 @@ export type ObjectDetail = {
   geometry_type: string;
   properties: Record<string, unknown>;
   sources: SourceSummary[];
+  facility?: FacilityRepresentation | null;
+};
+
+export type FacilityMember = {
+  canonical_id: string;
+  geometry_role: string;
+  source_type: string;
+  source_object_id: string;
+};
+
+export type FacilityRepresentation = {
+  id: string;
+  category_key: string;
+  representative_object_id: string;
+  display_object_id: string;
+  analysis_object_id: string;
+  members: FacilityMember[];
 };
 
 export type RenderGeometry = "point" | "line" | "polygon";

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -28,6 +30,11 @@ class FeatureLimitExceededError(ValueError):
 @dataclass(frozen=True)
 class MapFeatureData:
     id: UUID
+    canonical_id: UUID
+    facility_entity_id: UUID | None
+    representative_canonical_id: UUID
+    display_canonical_id: UUID
+    member_canonical_ids: list[UUID]
     name: str | None
     object_kind: str
     geometry: dict[str, Any]
@@ -52,36 +59,70 @@ class ObjectDetailData:
     geometry_type: str
     properties: dict[str, Any]
     sources: list[SourceSummaryData]
+    facility: FacilityRepresentationData | None = None
+
+
+@dataclass(frozen=True)
+class FacilityMemberData:
+    canonical_id: UUID
+    geometry_role: str
+    source_type: str
+    source_object_id: str
+
+
+@dataclass(frozen=True)
+class FacilityRepresentationData:
+    id: UUID
+    category_key: str
+    representative_object_id: UUID
+    display_object_id: UUID
+    analysis_object_id: UUID
+    members: list[FacilityMemberData]
+
+
+REPRESENTATION_JOINS = """
+    LEFT JOIN domain.facility_entity_members AS facility_member
+      ON facility_member.canonical_object_id=object.id
+     AND facility_member.lifecycle_status='active'
+    LEFT JOIN domain.facility_entities AS facility
+      ON facility.id=facility_member.facility_entity_id
+     AND facility.lifecycle_status='active'
+    JOIN catalog.objects AS display_object
+      ON display_object.id=coalesce(facility.display_object_id,object.id)
+     AND display_object.lifecycle_status='active'
+"""
 
 
 MAP_FEATURE_IDS_CATEGORY_FIRST_SQL = text(
-    """
+    f"""
     WITH category_ids AS MATERIALIZED (
         SELECT DISTINCT category.object_id
         FROM catalog.object_categories AS category
         WHERE category.lifecycle_status = 'active'
           AND category.category_key = ANY(:categories)
-    ), category_objects AS MATERIALIZED (
-        SELECT object.id, object.geom
+    ), representations AS MATERIALIZED (
+        SELECT DISTINCT coalesce(facility.id,object.id) AS id,
+                        display_object.geom
         FROM category_ids AS candidate
         JOIN catalog.objects AS object ON object.id = candidate.object_id
+        {REPRESENTATION_JOINS}
         WHERE object.lifecycle_status = 'active'
     ), envelope AS (
         SELECT ST_MakeEnvelope(
             :min_lon, :min_lat, :max_lon, :max_lat, 4326
         ) AS geom
     )
-    SELECT object.id
-    FROM category_objects AS object
+    SELECT representation.id
+    FROM representations AS representation
     CROSS JOIN envelope
-    WHERE object.geom && envelope.geom
-      AND ST_Intersects(object.geom, envelope.geom)
+    WHERE representation.geom && envelope.geom
+      AND ST_Intersects(representation.geom, envelope.geom)
     LIMIT :fetch_limit
     """
 )
 
 MAP_FEATURE_IDS_SPATIAL_FIRST_SQL = text(
-    """
+    f"""
     WITH envelope AS (
         SELECT ST_MakeEnvelope(
             :min_lon, :min_lat, :max_lon, :max_lat, 4326
@@ -93,13 +134,22 @@ MAP_FEATURE_IDS_SPATIAL_FIRST_SQL = text(
         WHERE object.lifecycle_status = 'active'
           AND object.geom && envelope.geom
           AND ST_Intersects(object.geom, envelope.geom)
-    )
-    SELECT DISTINCT candidate.id
+    ), representations AS MATERIALIZED (
+    SELECT DISTINCT coalesce(facility.id,object.id) AS id,
+                    display_object.geom
     FROM spatial_objects AS candidate
+    JOIN catalog.objects AS object ON object.id=candidate.id
     JOIN catalog.object_categories AS selected_category
       ON selected_category.object_id = candidate.id
      AND selected_category.lifecycle_status = 'active'
      AND selected_category.category_key = ANY(:categories)
+    {REPRESENTATION_JOINS}
+    )
+    SELECT representation.id
+    FROM representations AS representation
+    CROSS JOIN envelope
+    WHERE representation.geom && envelope.geom
+      AND ST_Intersects(representation.geom,envelope.geom)
     LIMIT :fetch_limit
     """
 )
@@ -148,13 +198,25 @@ def _district_feature_ids_sql(*, spatial_first: bool, multiple: bool) -> TextCla
                   AND ST_Intersects(object.geom,envelope.geom)
                   AND object.geom && scope.geom
                   AND ST_Intersects(object.geom,scope.geom)
-            )
-            SELECT DISTINCT candidate.id
+            ), representations AS MATERIALIZED (
+            SELECT DISTINCT coalesce(facility.id,object.id) AS id,
+                            display_object.geom
             FROM spatial_objects AS candidate
+            JOIN catalog.objects AS object ON object.id=candidate.id
             JOIN catalog.object_categories AS selected_category
-              ON selected_category.object_id=candidate.id
+              ON selected_category.object_id=object.id
              AND selected_category.lifecycle_status='active'
              AND selected_category.category_key=ANY(:categories)
+            {REPRESENTATION_JOINS}
+            )
+            SELECT representation.id
+            FROM representations AS representation
+            CROSS JOIN envelope
+            CROSS JOIN selected_scope AS scope
+            WHERE representation.geom && envelope.geom
+              AND ST_Intersects(representation.geom,envelope.geom)
+              AND representation.geom && scope.geom
+              AND ST_Intersects(representation.geom,scope.geom)
             LIMIT :fetch_limit
             """
         )
@@ -165,24 +227,26 @@ def _district_feature_ids_sql(*, spatial_first: bool, multiple: bool) -> TextCla
             FROM catalog.object_categories AS category
             WHERE category.lifecycle_status='active'
               AND category.category_key=ANY(:categories)
-        ), category_objects AS MATERIALIZED (
-            SELECT object.id,object.geom
+        ), representations AS MATERIALIZED (
+            SELECT DISTINCT coalesce(facility.id,object.id) AS id,
+                            display_object.geom
             FROM category_ids AS candidate
             JOIN catalog.objects AS object ON object.id=candidate.object_id
+            {REPRESENTATION_JOINS}
             WHERE object.lifecycle_status='active'
         ), envelope AS (
             SELECT ST_MakeEnvelope(
                 :min_lon, :min_lat, :max_lon, :max_lat, 4326
             ) AS geom
         )
-        SELECT object.id
-        FROM category_objects AS object
+        SELECT representation.id
+        FROM representations AS representation
         CROSS JOIN envelope
         CROSS JOIN selected_scope AS scope
-        WHERE object.geom && envelope.geom
-          AND ST_Intersects(object.geom,envelope.geom)
-          AND object.geom && scope.geom
-          AND ST_Intersects(object.geom,scope.geom)
+        WHERE representation.geom && envelope.geom
+          AND ST_Intersects(representation.geom,envelope.geom)
+          AND representation.geom && scope.geom
+          AND ST_Intersects(representation.geom,scope.geom)
         LIMIT :fetch_limit
         """
     )
@@ -226,20 +290,48 @@ def feature_ids_query(
 
 MAP_FEATURE_PAYLOAD_SQL = text(
     """
-    SELECT object.id,
-           object.name,
-           object.object_kind,
-           ST_AsGeoJSON(object.geom, 6)::jsonb AS geometry,
+    WITH requested AS (
+        SELECT unnest(CAST(:object_ids AS uuid[])) AS id
+    ), representation AS (
+        SELECT requested.id AS feature_id,
+               facility.id AS facility_entity_id,
+               coalesce(facility.representative_object_id,requested.id) AS representative_id,
+               coalesce(facility.display_object_id,requested.id) AS display_id,
+               CASE WHEN facility.id IS NULL THEN ARRAY[requested.id]
+                    ELSE ARRAY(
+                   SELECT member.canonical_object_id
+                   FROM domain.facility_entity_members AS member
+                   WHERE member.facility_entity_id=facility.id
+                     AND member.lifecycle_status='active'
+                   ORDER BY member.canonical_object_id
+                 ) END AS member_ids
+        FROM requested
+        LEFT JOIN domain.facility_entities AS facility
+          ON facility.id=requested.id AND facility.lifecycle_status='active'
+    )
+    SELECT representation.feature_id AS id,
+           representative.id AS canonical_id,
+           representation.facility_entity_id,
+           representative.id AS representative_canonical_id,
+           display.id AS display_canonical_id,
+           representation.member_ids AS member_canonical_ids,
+           representative.name,
+           representative.object_kind,
+           ST_AsGeoJSON(display.geom, 6)::jsonb AS geometry,
            ARRAY(
-               SELECT all_category.category_key
+               SELECT DISTINCT all_category.category_key
                FROM catalog.object_categories AS all_category
-               WHERE all_category.object_id = object.id
+               WHERE all_category.object_id=ANY(representation.member_ids)
                  AND all_category.lifecycle_status = 'active'
                ORDER BY all_category.category_key
            ) AS categories
-    FROM catalog.objects AS object
-    WHERE object.id = ANY(:object_ids)
-      AND object.lifecycle_status = 'active'
+    FROM representation
+    JOIN catalog.objects AS representative
+      ON representative.id=representation.representative_id
+     AND representative.lifecycle_status='active'
+    JOIN catalog.objects AS display
+      ON display.id=representation.display_id
+     AND display.lifecycle_status='active'
     """
 )
 
@@ -275,6 +367,31 @@ OBJECT_SOURCES_SQL = text(
     WHERE binding.object_id = :object_id
       AND binding.source_status = 'present'
     ORDER BY source.provider, binding.source_object_type, binding.source_object_id
+    """
+)
+
+OBJECT_FACILITY_SQL = text(
+    """
+    SELECT entity.id,entity.category_key,entity.representative_object_id,
+           entity.display_object_id,entity.analysis_object_id
+    FROM domain.facility_entity_members AS member
+    JOIN domain.facility_entities AS entity
+      ON entity.id=member.facility_entity_id AND entity.lifecycle_status='active'
+    WHERE member.canonical_object_id=:object_id
+      AND member.lifecycle_status='active'
+    """
+)
+
+FACILITY_MEMBERS_SQL = text(
+    """
+    SELECT member.canonical_object_id,member.geometry_role,
+           binding.source_object_type,binding.source_object_id
+    FROM domain.facility_entity_members AS member
+    JOIN catalog.object_sources AS binding
+      ON binding.object_id=member.canonical_object_id AND binding.source_status='present'
+    WHERE member.facility_entity_id=:facility_id
+      AND member.lifecycle_status='active'
+    ORDER BY member.canonical_object_id,binding.source_object_type,binding.source_object_id
     """
 )
 
@@ -339,6 +456,11 @@ class MapCatalogService:
             [
                 MapFeatureData(
                     id=row.id,
+                    canonical_id=row.canonical_id,
+                    facility_entity_id=row.facility_entity_id,
+                    representative_canonical_id=row.representative_canonical_id,
+                    display_canonical_id=row.display_canonical_id,
+                    member_canonical_ids=list(row.member_canonical_ids),
                     name=str(row.name) if row.name is not None else None,
                     object_kind=str(row.object_kind),
                     geometry=_geometry(row.geometry),
@@ -359,6 +481,16 @@ class MapCatalogService:
             source_rows = connection.execute(
                 OBJECT_SOURCES_SQL, {"object_id": object_id}
             ).all()
+            facility_row = connection.execute(
+                OBJECT_FACILITY_SQL, {"object_id": object_id}
+            ).one_or_none()
+            facility_members = (
+                connection.execute(
+                    FACILITY_MEMBERS_SQL, {"facility_id": facility_row.id}
+                ).all()
+                if facility_row is not None
+                else []
+            )
         return ObjectDetailData(
             id=row.id,
             name=str(row.name) if row.name is not None else None,
@@ -380,4 +512,24 @@ class MapCatalogService:
                 )
                 for source in source_rows
             ],
+            facility=(
+                FacilityRepresentationData(
+                    id=facility_row.id,
+                    category_key=str(facility_row.category_key),
+                    representative_object_id=facility_row.representative_object_id,
+                    display_object_id=facility_row.display_object_id,
+                    analysis_object_id=facility_row.analysis_object_id,
+                    members=[
+                        FacilityMemberData(
+                            canonical_id=member.canonical_object_id,
+                            geometry_role=str(member.geometry_role),
+                            source_type=str(member.source_object_type),
+                            source_object_id=str(member.source_object_id),
+                        )
+                        for member in facility_members
+                    ],
+                )
+                if facility_row is not None
+                else None
+            ),
         )

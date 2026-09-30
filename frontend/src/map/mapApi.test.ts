@@ -98,6 +98,41 @@ describe("mapApi", () => {
     });
   });
 
+  it("accepts compact logical facility representation metadata", async () => {
+    const feature = {
+      type: "Feature",
+      id: "9f3f27a5-950f-5c24-adce-5fe4db2c36c7",
+      geometry: { type: "Polygon", coordinates: [] },
+      properties: {
+        canonical_id: "3f24df02-2d4c-4595-bc44-74e0c7af83cd",
+        facility_entity_id: "9f3f27a5-950f-5c24-adce-5fe4db2c36c7",
+        representative_canonical_id: "3f24df02-2d4c-4595-bc44-74e0c7af83cd",
+        display_canonical_id: "0014437e-092b-479f-a006-10c926604682",
+        member_canonical_ids: [
+          "3f24df02-2d4c-4595-bc44-74e0c7af83cd",
+          "0014437e-092b-479f-a006-10c926604682",
+        ],
+        name: "СМ-Клиника",
+        categories: ["healthcare.clinic"],
+        object_kind: "feature",
+      },
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ type: "FeatureCollection", features: [feature] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await fetchMapFeatures({
+      bounds: { minLon: 30.3, minLat: 59.93, maxLon: 30.32, maxLat: 59.945 },
+      categories: ["healthcare.clinic"],
+    });
+
+    expect(result.features[0].properties.member_canonical_ids).toHaveLength(2);
+    expect(result.features[0].geometry.type).toBe("Polygon");
+  });
+
   it("aborts the previous request and ignores a late stale response", async () => {
     const resolvers: Array<(value: CatalogFeatureCollection) => void> = [];
     const fetcher = vi.fn(

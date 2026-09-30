@@ -12,6 +12,8 @@ from app.api.map_validation import (
 from app.api.schemas import (
     ErrorDetail,
     ErrorResponse,
+    FacilityMember,
+    FacilityRepresentation,
     GeoJSONFeature,
     GeoJSONFeatureCollection,
     MapFeatureProperties,
@@ -99,7 +101,11 @@ def map_features(
                 id=feature.id,
                 geometry=feature.geometry,
                 properties=MapFeatureProperties(
-                    canonical_id=feature.id,
+                    canonical_id=feature.canonical_id,
+                    facility_entity_id=feature.facility_entity_id,
+                    representative_canonical_id=feature.representative_canonical_id,
+                    display_canonical_id=feature.display_canonical_id,
+                    member_canonical_ids=feature.member_canonical_ids,
                     name=feature.name,
                     categories=feature.categories,
                     object_kind=feature.object_kind,
@@ -139,4 +145,24 @@ def object_detail(
             )
             for source in detail.sources
         ],
+        facility=(
+            FacilityRepresentation(
+                id=detail.facility.id,
+                category_key=detail.facility.category_key,
+                representative_object_id=detail.facility.representative_object_id,
+                display_object_id=detail.facility.display_object_id,
+                analysis_object_id=detail.facility.analysis_object_id,
+                members=[
+                    FacilityMember(
+                        canonical_id=member.canonical_id,
+                        geometry_role=member.geometry_role,
+                        source_type=member.source_type,
+                        source_object_id=member.source_object_id,
+                    )
+                    for member in detail.facility.members
+                ],
+            )
+            if detail.facility is not None
+            else None
+        ),
     )

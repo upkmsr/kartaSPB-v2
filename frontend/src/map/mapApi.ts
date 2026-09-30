@@ -45,7 +45,14 @@ const isMapFeatureProperties = (value: unknown): value is MapFeatureProperties =
   typeof value.canonical_id === "string" &&
   (typeof value.name === "string" || value.name === null) &&
   isStringArray(value.categories) &&
-  typeof value.object_kind === "string";
+  typeof value.object_kind === "string" &&
+  (value.facility_entity_id === undefined ||
+    value.facility_entity_id === null ||
+    typeof value.facility_entity_id === "string") &&
+  (value.representative_canonical_id === undefined ||
+    typeof value.representative_canonical_id === "string") &&
+  (value.display_canonical_id === undefined || typeof value.display_canonical_id === "string") &&
+  (value.member_canonical_ids === undefined || isStringArray(value.member_canonical_ids));
 
 const supportedGeometryTypes = new Set([
   "Point",
@@ -76,6 +83,23 @@ export const isCatalogFeatureCollection = (value: unknown): value is CatalogFeat
   Array.isArray(value.features) &&
   value.features.every(isCatalogFeature);
 
+const isFacilityRepresentation = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.id === "string" &&
+  typeof value.category_key === "string" &&
+  typeof value.representative_object_id === "string" &&
+  typeof value.display_object_id === "string" &&
+  typeof value.analysis_object_id === "string" &&
+  Array.isArray(value.members) &&
+  value.members.every(
+    (member) =>
+      isRecord(member) &&
+      typeof member.canonical_id === "string" &&
+      typeof member.geometry_role === "string" &&
+      typeof member.source_type === "string" &&
+      typeof member.source_object_id === "string",
+  );
+
 const isObjectDetail = (value: unknown): value is ObjectDetail =>
   isRecord(value) &&
   typeof value.id === "string" &&
@@ -93,7 +117,10 @@ const isObjectDetail = (value: unknown): value is ObjectDetail =>
       typeof source.object_id === "string" &&
       (typeof source.source_version === "string" || source.source_version === null) &&
       typeof source.geometry_quality === "string",
-  );
+  ) &&
+  (value.facility === undefined ||
+    value.facility === null ||
+    isFacilityRepresentation(value.facility));
 
 export const guardBbox = (bounds: MapBounds): BboxGuardResult => {
   const coordinates = [bounds.minLon, bounds.minLat, bounds.maxLon, bounds.maxLat];

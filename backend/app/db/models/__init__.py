@@ -6,7 +6,7 @@ from app.db.models.catalog import (
     ObjectCategorySource,
     ObjectSource,
 )
-from app.db.models.domain import District
+from app.db.models.domain import District, FacilityEntity, FacilityEntityMember
 from app.db.models.import_run import ImportRun, ImportRunStatus
 from app.db.models.osm import (
     OsmNode,
@@ -21,6 +21,8 @@ from app.db.models.source import DatasetSource
 __all__ = [
     "DatasetSource",
     "District",
+    "FacilityEntity",
+    "FacilityEntityMember",
     "CatalogObject",
     "CatalogRelationship",
     "Category",

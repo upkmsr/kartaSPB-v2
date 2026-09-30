@@ -3,6 +3,8 @@ from app.db.models import (
     CatalogRelationship,
     DatasetSource,
     District,
+    FacilityEntity,
+    FacilityEntityMember,
     ImportRun,
     ImportRunStatus,
     ObjectSource,
@@ -101,4 +103,22 @@ def test_district_model_keeps_geometry_in_catalog() -> None:
         "enabled",
         "created_at",
         "updated_at",
+    }
+
+
+def test_logical_facility_models_reference_canonical_objects() -> None:
+    assert FacilityEntity.__table__.schema == "domain"
+    assert FacilityEntityMember.__table__.schema == "domain"
+    assert {column.name for column in FacilityEntity.__table__.columns} >= {
+        "category_key",
+        "representative_object_id",
+        "display_object_id",
+        "analysis_object_id",
+        "lifecycle_status",
+        "link_method",
+        "evidence",
+    }
+    assert {column.name for column in FacilityEntityMember.__table__.primary_key.columns} == {
+        "facility_entity_id",
+        "canonical_object_id",
     }

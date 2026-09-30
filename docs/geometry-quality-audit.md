@@ -26,6 +26,28 @@ facility. No remediation is implemented by this audit.
 Audit snapshot: Alembic `20260928_0008`, 417,331 active canonical objects,
 417,332 active category assignments, and 18 enabled district bindings.
 
+## S4R implementation outcome
+
+The follow-up logical representation layer is implemented and accepted in an isolated
+production-equivalent rehearsal. It adds `domain.facility_entities` and
+`domain.facility_entity_members` without changing canonical objects, geometries,
+categories, source bindings, or district bindings. A conservative bounded matcher
+found 165 candidate pairs, accepted 19 strong pairs into 15 two-member entities, and
+left two ambiguous school components unresolved. The accepted set contains nine
+kindergartens, three schools, and three clinics; no hospital pair had sufficient
+evidence.
+
+Both audited clinic pairs remain justified. `node/1868505732` links only to the
+nameless facility building `way/23375678`; a differently named clinic site at the same
+address remains separate. `node/10807428892` links to `way/751143097` by exact phone
+and containment. Most kindergarten and school Points correctly remain unlinked.
+
+The second identical rehearsal refresh created and changed zero entities. Canonical and
+assignment counts, zero duplicate source identities, all 18 district bindings, and
+their UUID checksum remained unchanged. Full policy, reviewed cases, API behavior, and
+rehearsal measurements are recorded in [logical-facilities.md](logical-facilities.md).
+Production migration/backfill remains gated on manual visual acceptance.
+
 ## Method and safety
 
 All production queries were read-only and category-scoped. Candidate searches used a

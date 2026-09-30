@@ -22,6 +22,11 @@ class FakeMapService:
         self.district_ids: tuple[UUID, ...] | None = None
         self.feature = MapFeatureData(
             id=UUID("c49e54e1-3481-4b07-9f81-0b161b57b62b"),
+            canonical_id=UUID("c49e54e1-3481-4b07-9f81-0b161b57b62b"),
+            facility_entity_id=None,
+            representative_canonical_id=UUID("c49e54e1-3481-4b07-9f81-0b161b57b62b"),
+            display_canonical_id=UUID("c49e54e1-3481-4b07-9f81-0b161b57b62b"),
+            member_canonical_ids=[UUID("c49e54e1-3481-4b07-9f81-0b161b57b62b")],
             name="Озерки",
             object_kind="feature",
             geometry={"type": "Point", "coordinates": [30.3, 60.0]},
@@ -89,6 +94,10 @@ def test_map_features_contract_default_limit_and_multiple_categories(client: Tes
                 "geometry": {"type": "Point", "coordinates": [30.3, 60.0]},
                 "properties": {
                     "canonical_id": "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+                    "facility_entity_id": None,
+                    "representative_canonical_id": "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+                    "display_canonical_id": "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+                    "member_canonical_ids": ["c49e54e1-3481-4b07-9f81-0b161b57b62b"],
                     "name": "Озерки",
                     "categories": ["healthcare.pharmacy", "transport.stop"],
                     "object_kind": "feature",
@@ -244,6 +253,7 @@ def test_object_detail_contract_not_found_and_invalid_uuid(client: TestClient) -
 
     assert found.status_code == 200
     assert found.json()["geometry_type"] == "Point"
+    assert found.json()["facility"] is None
     assert found.json()["sources"] == [
         {
             "provider": "OpenStreetMap",

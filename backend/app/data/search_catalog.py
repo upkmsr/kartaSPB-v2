@@ -94,6 +94,7 @@ def _search_sql(*, categories: bool, district_mode: DistrictMode) -> TextClause:
                    object.name,
                    object.search_name,
                    object.object_kind,
+                   object.geom AS representation_geom,
                    CASE
                      WHEN object.search_name = input.value THEN 0
                      WHEN object.search_name LIKE input.value || '%' THEN 1
@@ -111,8 +112,17 @@ def _search_sql(*, categories: bool, district_mode: DistrictMode) -> TextClause:
                        matched.name,
                        matched.search_name,
                        matched.object_kind,
-                       matched.geom
+                       coalesce(display_object.geom,matched.geom) AS geom
                 FROM catalog.objects AS matched
+                LEFT JOIN domain.facility_entity_members AS facility_member
+                  ON facility_member.canonical_object_id=matched.id
+                 AND facility_member.lifecycle_status='active'
+                LEFT JOIN domain.facility_entities AS facility
+                  ON facility.id=facility_member.facility_entity_id
+                 AND facility.lifecycle_status='active'
+                LEFT JOIN catalog.objects AS display_object
+                  ON display_object.id=facility.display_object_id
+                 AND display_object.lifecycle_status='active'
                 WHERE matched.id = candidate.id
                   AND matched.lifecycle_status = 'active'
                   AND matched.name IS NOT NULL
@@ -147,21 +157,21 @@ def _search_sql(*, categories: bool, district_mode: DistrictMode) -> TextClause:
         SELECT result.id,
                result.name,
                result.object_kind,
-               replace(ST_GeometryType(object.geom), 'ST_', '') AS geometry_type,
+               replace(ST_GeometryType(result.representation_geom), 'ST_', '') AS geometry_type,
                ST_AsGeoJSON(
                    CASE
-                     WHEN ST_GeometryType(object.geom) = 'ST_LineString'
-                       THEN ST_LineInterpolatePoint(object.geom, 0.5)
-                     ELSE ST_PointOnSurface(object.geom)
+                     WHEN ST_GeometryType(result.representation_geom) = 'ST_LineString'
+                       THEN ST_LineInterpolatePoint(result.representation_geom, 0.5)
+                     ELSE ST_PointOnSurface(result.representation_geom)
                    END,
                    6
                )::jsonb
                    AS representative_point,
                ARRAY[
-                   ST_XMin(Box3D(object.geom)),
-                   ST_YMin(Box3D(object.geom)),
-                   ST_XMax(Box3D(object.geom)),
-                   ST_YMax(Box3D(object.geom))
+                   ST_XMin(Box3D(result.representation_geom)),
+                   ST_YMin(Box3D(result.representation_geom)),
+                   ST_XMax(Box3D(result.representation_geom)),
+                   ST_YMax(Box3D(result.representation_geom))
                ]::double precision[] AS bbox,
                ARRAY(
                    SELECT category.category_key

@@ -22,6 +22,7 @@ type MockMapInstance = {
   fitBounds: ReturnType<typeof vi.fn>;
   flyTo: ReturnType<typeof vi.fn>;
   resize: ReturnType<typeof vi.fn>;
+  setFilter: ReturnType<typeof vi.fn>;
 };
 
 const mapMock = vi.hoisted(() => ({ instances: [] as MockMapInstance[] }));
@@ -42,6 +43,7 @@ vi.mock("maplibre-gl", () => {
     fitBounds = vi.fn();
     flyTo = vi.fn();
     resize = vi.fn();
+    setFilter = vi.fn();
 
     constructor() {
       mapMock.instances.push(this);
@@ -76,7 +78,6 @@ vi.mock("maplibre-gl", () => {
     addLayer(layer: { id: string }) {
       this.layers.set(layer.id, layer);
     }
-    setFilter() {}
     getBounds() {
       return {
         getWest: () => this.bounds.west,
@@ -188,6 +189,65 @@ describe("MapView MapLibre integration", () => {
     const zoomedUrl = new URL(String(fetchMock.mock.calls[1][0]), "http://localhost");
     expect(zoomedUrl.searchParams.get("categories")).toContain("transport.road");
     expect(zoomedUrl.searchParams.get("categories")).toContain("transport.stop");
+  });
+
+  it("keeps all facility members selectable while clicking the representative", async () => {
+    const pointId = "3f24df02-2d4c-4595-bc44-74e0c7af83cd";
+    const areaId = "0014437e-092b-479f-a006-10c926604682";
+    const entityId = "9f3f27a5-950f-5c24-adce-5fe4db2c36c7";
+    const onFeatureSelect = vi.fn();
+    const onVisibleFeatureIdsChange = vi.fn();
+    const featureCollection: CatalogFeatureCollection = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: entityId,
+          geometry: { type: "Polygon", coordinates: [] },
+          properties: {
+            canonical_id: pointId,
+            facility_entity_id: entityId,
+            representative_canonical_id: pointId,
+            display_canonical_id: areaId,
+            member_canonical_ids: [pointId, areaId],
+            name: "СМ-Клиника",
+            categories: ["healthcare.clinic"],
+            object_kind: "feature",
+          },
+        },
+      ],
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(featureCollection), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    render(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
+        selectedFeatureId={areaId}
+        onFeatureSelect={onFeatureSelect}
+        onVisibleFeatureIdsChange={onVisibleFeatureIdsChange}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+
+    expect(onVisibleFeatureIdsChange).toHaveBeenLastCalledWith(new Set([pointId, areaId]));
+    map.renderedFeatures = [
+      { properties: { canonical_id: pointId, representative_canonical_id: pointId } },
+    ];
+    act(() => map.emit("click", { point: { x: 1, y: 1 } }));
+    expect(onFeatureSelect).toHaveBeenCalledWith(pointId);
+    expect(JSON.stringify(map.layers.get("selection-fill"))).toContain(
+      JSON.stringify(["in", areaId, ["get", "member_canonical_ids"]]),
+    );
   });
 
   it("restores the latest collection after a style reload", async () => {

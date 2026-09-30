@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type {
+  ExpressionSpecification,
   FilterSpecification,
   GeoJSONSource,
   Map as MapLibreMap,
@@ -72,13 +73,19 @@ export type MapViewProps = {
   onZoomChange: (zoom: number) => void;
 };
 
+const selectedMembershipFilter = (selectedId: string | null): ExpressionSpecification => [
+  "any",
+  ["==", ["get", "canonical_id"], selectedId ?? ""],
+  ["in", selectedId ?? "", ["get", "member_canonical_ids"]],
+];
+
 const selectedFilter = (
   geometry: "point" | "line" | "polygon",
   selectedId: string | null,
 ): FilterSpecification => [
   "all",
   geometryFilter(geometry),
-  ["==", ["get", "canonical_id"], selectedId ?? ""],
+  selectedMembershipFilter(selectedId),
 ];
 
 const installCatalogLayers = (
@@ -125,7 +132,7 @@ const installCatalogLayers = (
       filter: [
         "all",
         ["any", geometryFilter("line"), geometryFilter("polygon")],
-        ["==", ["get", "canonical_id"], selectedId ?? ""],
+        selectedMembershipFilter(selectedId),
       ],
       paint: { "line-color": "#bbff3c", "line-width": 4, "line-opacity": 1 },
     });
@@ -150,7 +157,7 @@ const updateSelectionFilters = (map: MapLibreMap, selectedId: string | null): vo
   map.setFilter("selection-line", [
     "all",
     ["any", geometryFilter("line"), geometryFilter("polygon")],
-    ["==", ["get", "canonical_id"], selectedId ?? ""],
+    selectedMembershipFilter(selectedId),
   ]);
   map.setFilter("selection-point", selectedFilter("point", selectedId));
 };
@@ -269,7 +276,12 @@ export function MapView({
             latestDataRef.current = collection;
             setSourceData(collection);
             onVisibleFeatureIdsChangeRef.current(
-              new Set(collection.features.map((feature) => feature.properties.canonical_id)),
+              new Set(
+                collection.features.flatMap(
+                  (feature) =>
+                    feature.properties.member_canonical_ids ?? [feature.properties.canonical_id],
+                ),
+              ),
             );
             const durationMs = performance.now() - startedAt;
             onRequestStateChangeRef.current(
@@ -338,7 +350,8 @@ export function MapView({
       const layers = interactiveRenderLayerIds.filter((id) => map.getLayer(id));
       if (layers.length === 0) return;
       const feature = map.queryRenderedFeatures(event.point, { layers })[0];
-      const canonicalId = feature?.properties?.canonical_id;
+      const canonicalId =
+        feature?.properties?.representative_canonical_id ?? feature?.properties?.canonical_id;
       if (typeof canonicalId === "string") {
         onFeatureSelectRef.current(canonicalId);
       }

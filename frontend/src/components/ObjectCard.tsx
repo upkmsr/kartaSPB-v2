@@ -91,6 +91,29 @@ export function ObjectCard({ state, onClose }: ObjectCardProps) {
               ))}
             </section>
           )}
+
+          {state.detail.facility && (
+            <section className="object-card__sources" aria-label="Логическое представление">
+              <p className="section-label">Представление объекта</p>
+              <div className="source-summary">
+                <strong>{categoryLabel(state.detail.facility.category_key)}</strong>
+                <span>{state.detail.facility.members.length} исходных объекта</span>
+                <small>
+                  display {state.detail.facility.display_object_id.slice(0, 8)} · analysis{" "}
+                  {state.detail.facility.analysis_object_id.slice(0, 8)}
+                </small>
+              </div>
+              {state.detail.facility.members.map((member) => (
+                <div className="source-summary" key={member.canonical_id}>
+                  <strong>{member.geometry_role}</strong>
+                  <span>
+                    {member.source_type} {member.source_object_id}
+                  </span>
+                  <small>canonical {member.canonical_id.slice(0, 8)}</small>
+                </div>
+              ))}
+            </section>
+          )}
         </div>
       )}
     </aside>

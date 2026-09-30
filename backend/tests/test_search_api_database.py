@@ -32,6 +32,7 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
         UUID("10000000-0000-0000-0000-000000000108"),
     ]
     all_object_ids = [district_object_id, *object_ids]
+    facility_id = uuid4()
     try:
         with engine.begin() as connection:
             connection.execute(
@@ -157,6 +158,49 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
             "coordinates": [10.1, 10.1],
         }
 
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO domain.facility_entities
+                      (id,category_key,representative_object_id,display_object_id,
+                       analysis_object_id,lifecycle_status,link_method,evidence)
+                    VALUES (:id,:category,:point,:area,:point,'active','fixture','{}')
+                """),
+                {
+                    "id": facility_id,
+                    "category": category_a,
+                    "point": object_ids[0],
+                    "area": object_ids[4],
+                },
+            )
+            connection.execute(
+                text("""
+                    INSERT INTO domain.facility_entity_members
+                      (facility_entity_id,canonical_object_id,geometry_role,
+                       lifecycle_status,link_method,evidence)
+                    VALUES
+                      (:entity,:point,'POINT','active','fixture','{}'),
+                      (:entity,:area,'FACILITY_SITE','active','fixture','{}')
+                """),
+                {"entity": facility_id, "point": object_ids[0], "area": object_ids[4]},
+            )
+
+        representation_search = client.get(
+            "/api/search", params={"q": "аптека", "categories": category_a, "limit": 10}
+        )
+        assert representation_search.status_code == 200
+        represented = next(
+            item
+            for item in representation_search.json()["results"]
+            if item["id"] == str(object_ids[0])
+        )
+        assert represented["geometry_type"] == "Polygon"
+        assert represented["bbox"] == [10.15, 10.15, 10.25, 10.25]
+        assert represented["representative_point"] == {
+            "type": "Point",
+            "coordinates": [10.2, 10.2],
+        }
+
         normalized_yo = client.get(
             "/api/search", params={"q": "елочная", "categories": category_a}
         )
@@ -238,6 +282,14 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
         assert unknown_district.json()["detail"]["code"] == "unknown_district"
     finally:
         with engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM domain.facility_entity_members WHERE facility_entity_id=:id"),
+                {"id": facility_id},
+            )
+            connection.execute(
+                text("DELETE FROM domain.facility_entities WHERE id=:id"),
+                {"id": facility_id},
+            )
             connection.execute(
                 text("DELETE FROM domain.districts WHERE id=:id"), {"id": district_id}
             )

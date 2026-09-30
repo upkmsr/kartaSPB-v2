@@ -19,6 +19,10 @@ def test_real_postgis_map_and_detail_contracts(client: TestClient) -> None:
     token = uuid4().hex[:8]
     categories = [f"test.{token}.{kind}" for kind in ("point", "extra", "line", "polygon", "multi")]
     object_ids = [uuid4() for _ in range(4)]
+    facility_id = uuid4()
+    district_id = uuid4()
+    district_object_id = uuid4()
+    all_object_ids = [*object_ids, district_object_id]
     source_id: int | None = None
     try:
         with engine.begin() as connection:
@@ -62,19 +66,31 @@ def test_real_postgis_map_and_detail_contracts(client: TestClient) -> None:
                        ST_GeomFromText(:polygon_wkt,4326),'{}','{}',1),
                       (:multi,'feature','active','Fixture multipolygon',
                        ST_GeomFromText(:multi_wkt,4326),'{}','{}',1)
+                      ,(:district,'boundary','active','Fixture district',
+                       ST_GeomFromText(:district_wkt,4326),'{}','{}',1)
                 """),
                 {
                     "point": object_ids[0],
                     "line": object_ids[1],
                     "polygon": object_ids[2],
                     "multi": object_ids[3],
+                    "district": district_object_id,
                     "line_wkt": "LINESTRING(10 10,10.1 10.1)",
                     "polygon_wkt": "POLYGON((10 10,10.1 10,10.1 10.1,10 10.1,10 10))",
                     "multi_wkt": (
                         "MULTIPOLYGON(((10.11 10.11,10.15 10.11,10.15 10.15,"
                         "10.11 10.15,10.11 10.11)))"
                     ),
+                    "district_wkt": "POLYGON((9.8 9.8,10.3 9.8,10.3 10.3,9.8 10.3,9.8 9.8))",
                 },
+            )
+            connection.execute(
+                text("""
+                    INSERT INTO domain.districts
+                      (id,canonical_object_id,name,slug,display_order,enabled)
+                    VALUES (:id,:object_id,'Fixture district',:slug,200,true)
+                """),
+                {"id": district_id, "object_id": district_object_id, "slug": f"map-{token}"},
             )
             connection.execute(
                 text("""
@@ -144,7 +160,68 @@ def test_real_postgis_map_and_detail_contracts(client: TestClient) -> None:
             if feature["id"] == str(object_ids[0])
         )
         assert point["properties"]["canonical_id"] == str(object_ids[0])
+        assert point["properties"]["facility_entity_id"] is None
+        assert point["properties"]["member_canonical_ids"] == [str(object_ids[0])]
         assert point["properties"]["categories"] == sorted(categories[:2])
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO domain.facility_entities
+                      (id,category_key,representative_object_id,display_object_id,
+                       analysis_object_id,lifecycle_status,link_method,evidence)
+                    VALUES
+                      (:id,:category,:point,:polygon,:polygon,'active','fixture','{}')
+                """),
+                {
+                    "id": facility_id,
+                    "category": categories[0],
+                    "point": object_ids[0],
+                    "polygon": object_ids[2],
+                },
+            )
+            connection.execute(
+                text("""
+                    INSERT INTO domain.facility_entity_members
+                      (facility_entity_id,canonical_object_id,geometry_role,
+                       lifecycle_status,link_method,evidence)
+                    VALUES
+                      (:entity,:point,'POINT','active','fixture','{}'),
+                      (:entity,:polygon,'FACILITY_SITE','active','fixture','{}')
+                """),
+                {"entity": facility_id, "point": object_ids[0], "polygon": object_ids[2]},
+            )
+
+        grouped = client.get(
+            "/api/map/features",
+            params={
+                "bbox": "9.9,9.9,10.2,10.2",
+                "categories": ",".join(categories),
+                "districts": district_id,
+                "limit": 10,
+            },
+        )
+        assert grouped.status_code == 200, grouped.text
+        grouped_features = grouped.json()["features"]
+        assert len(grouped_features) == 3
+        logical = next(feature for feature in grouped_features if feature["id"] == str(facility_id))
+        assert logical["geometry"]["type"] == "Polygon"
+        assert logical["properties"]["canonical_id"] == str(object_ids[0])
+        assert logical["properties"]["display_canonical_id"] == str(object_ids[2])
+        assert logical["properties"]["member_canonical_ids"] == sorted(
+            [str(object_ids[0]), str(object_ids[2])]
+        )
+        assert sorted(logical["properties"]["categories"]) == sorted(
+            [categories[0], categories[1], categories[3]]
+        )
+
+        grouped_by_point_category = client.get(
+            "/api/map/features",
+            params={"bbox": "9.9,9.9,10.2,10.2", "categories": categories[0], "limit": 10},
+        )
+        assert [feature["id"] for feature in grouped_by_point_category.json()["features"]] == [
+            str(facility_id)
+        ]
 
         limited = client.get(
             "/api/map/features",
@@ -173,6 +250,13 @@ def test_real_postgis_map_and_detail_contracts(client: TestClient) -> None:
         assert detail_payload["name"] == "Fixture point"
         assert detail_payload["categories"] == sorted(categories[:2])
         assert detail_payload["geometry_type"] == "Point"
+        assert detail_payload["facility"]["id"] == str(facility_id)
+        assert detail_payload["facility"]["representative_object_id"] == str(object_ids[0])
+        assert detail_payload["facility"]["display_object_id"] == str(object_ids[2])
+        assert {member["canonical_id"] for member in detail_payload["facility"]["members"]} == {
+            str(object_ids[0]),
+            str(object_ids[2]),
+        }
         assert detail_payload["sources"] == [
             {
                 "provider": "fixture-provider",
@@ -202,16 +286,27 @@ def test_real_postgis_map_and_detail_contracts(client: TestClient) -> None:
     finally:
         with engine.begin() as connection:
             connection.execute(
+                text("DELETE FROM domain.facility_entity_members WHERE facility_entity_id=:id"),
+                {"id": facility_id},
+            )
+            connection.execute(
+                text("DELETE FROM domain.facility_entities WHERE id=:id"),
+                {"id": facility_id},
+            )
+            connection.execute(
+                text("DELETE FROM domain.districts WHERE id=:id"), {"id": district_id}
+            )
+            connection.execute(
                 text("DELETE FROM catalog.object_sources WHERE object_id=ANY(:ids)"),
                 {"ids": object_ids},
             )
             connection.execute(
                 text("DELETE FROM catalog.object_categories WHERE object_id=ANY(:ids)"),
-                {"ids": object_ids},
+                {"ids": all_object_ids},
             )
             connection.execute(
                 text("DELETE FROM catalog.objects WHERE id=ANY(:ids)"),
-                {"ids": object_ids},
+                {"ids": all_object_ids},
             )
             connection.execute(
                 text("DELETE FROM catalog.categories WHERE key=ANY(:categories)"),
