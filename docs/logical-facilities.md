@@ -196,6 +196,52 @@ preschool department. A differently named diagnostic center at the same address 
 including most kindergarten Points, remain canonical Points/areas because their
 evidence is insufficient.
 
+## Production acceptance
+
+The manual S4R visual gate was accepted before rollout. On 2026-10-01 production was
+upgraded exactly once from `20260928_0008` to `20260929_0009`; no OSM, canonical, or
+category refresh was run. The logical-facility refresh completed in 6.39 seconds with
+the same bounded result as rehearsal: 165 candidate pairs, 19 strong pairs, 146
+rejected/insufficient pairs, two conflict components, 15 active multi-member entities,
+and 30 active members. A second production refresh was intentionally not run.
+
+Production entities are nine `education.kindergarten`, three `education.school`, three
+`healthcare.clinic`, and zero `healthcare.hospital`. Active members are 15 Points, 12
+facility sites, and three buildings. Duplicate active memberships and invalid member or
+representative/display/analysis references are all zero. The two required clinic links
+(`node/1868505732` + `way/23375678` and `node/10807428892` + `way/751143097`) and all
+kindergarten/school rows in the reviewed-link table above were reproduced with the same
+facility UUIDs, roles, link methods, and evidence.
+
+The rollout was additive. Active canonical objects remained 417,331, active category
+assignments remained 417,332 (417,336 total), source bindings remained 417,331, and all
+18 enabled district bindings remained present. Duplicate source identities stayed at
+zero. Before/after checksums were identical for canonical IDs/geometries
+(`81dc55f068be7e54a07efa701902e28b`), category assignments
+(`7fdb2ffff0e8fcb34aab497594894890`), and district UUID/bindings
+(`52790483138975f1932a60df01e58598`).
+
+Intentionally unlinked production controls include kindergarten `node/9793115776`
+(Юникея), school `node/1539811239` (Лицей «Саша»), pharmacy `node/9447207816`, park
+`way/484992444`, stop `node/9893239337`, and road `way/929853279`. No active pharmacy,
+park, stop, or road object belongs to a facility entity.
+
+Production API acceptance confirmed that a grouped clinic is emitted once under its
+facility UUID with Polygon display geometry and without separate member features.
+Canonical ObjectDetail remains addressable by canonical UUID and includes source
+provenance, facility roles, and members. Search ranking was not changed; the linked
+clinic result keeps its canonical UUID while returning the display Polygon navigation
+geometry. District filtering, category filtering, exact district overlay, and
+`feature_limit_exceeded` behavior passed. The unlinked kindergarten remains a Point.
+
+Lightweight warmed runtime calls completed in 2.47 seconds for the facility viewport,
+0.93 seconds for an ordinary central viewport, 0.60 seconds for a remote district
+viewport, and 0.40 seconds for a road viewport. No clear greater-than-two-times
+regression was observed. Production database, backend, and frontend containers were
+healthy with zero restarts. Final regression passed 98 backend tests and 66 frontend
+tests, Ruff, mypy, ESLint, TypeScript, production build, worker-asset validation,
+Alembic model parity, and Alembic current-at-head.
+
 ## Known limitations and future work
 
 - Initial linking requires a Point/area pair; area-only relation structures are not
@@ -204,5 +250,5 @@ evidence is insufficient.
 - Exact refs can represent an institution with departments; conflicts are rejected,
   but future manual review may need allow/deny decisions stored separately.
 - Search suggestions are not collapsed in S4R.
-- Production counts remain pending the manual S4R visual gate and approved production
-  migration/refresh.
+- The production browser runtime uses the same image and accepted interaction contract
+  as the rehearsal visual gate; S4R adds no search-result collapsing or ranking changes.
