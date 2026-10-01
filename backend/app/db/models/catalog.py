@@ -62,6 +62,15 @@ class CatalogObject(Base):
                 "lifecycle_status = 'active' AND search_name IS NOT NULL"
             ),
         ),
+        Index(
+            "ix_catalog_objects_search_name_v2_trgm",
+            "search_name_v2",
+            postgresql_using="gin",
+            postgresql_ops={"search_name_v2": "gin_trgm_ops"},
+            postgresql_where=text(
+                "lifecycle_status = 'active' AND search_name_v2 IS NOT NULL"
+            ),
+        ),
         Index("ix_catalog_objects_superseded_by", "superseded_by"),
         {"schema": "catalog"},
     )
@@ -80,6 +89,14 @@ class CatalogObject(Base):
     search_name: Mapped[str | None] = mapped_column(
         Text(),
         Computed("lower(translate(name, 'Ёё', 'Ее'))", persisted=True),
+    )
+    search_name_v2: Mapped[str | None] = mapped_column(
+        Text(),
+        Computed(
+            "btrim(regexp_replace(replace(lower(translate(normalize(name, NFKC), "
+            "'Ёё', 'Ее')), chr(160), ' '), '[[:space:]]+', ' ', 'g'))",
+            persisted=True,
+        ),
     )
     geom: Mapped[Any | None] = mapped_column(Geometry("GEOMETRY", srid=4326, spatial_index=False))
     name_source_id: Mapped[int | None] = mapped_column(

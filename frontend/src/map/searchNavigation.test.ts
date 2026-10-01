@@ -4,6 +4,8 @@ import { searchResultNavigation } from "./searchNavigation";
 
 const searchResult = (geometryType: string, bbox: SearchResult["bbox"]): SearchResult => ({
   id: `id-${geometryType}`,
+  result_type: "object",
+  detail_object_id: `id-${geometryType}`,
   name: geometryType,
   categories: ["nature.park"],
   object_kind: "feature",

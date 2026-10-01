@@ -8,6 +8,8 @@ from app.api.schemas.map import GeoJSONGeometry
 
 class SearchResult(BaseModel):
     id: UUID
+    result_type: Literal["object", "facility", "street"]
+    detail_object_id: UUID | None
     name: str
     categories: list[str]
     object_kind: str

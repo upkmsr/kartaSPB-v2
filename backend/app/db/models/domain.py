@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from geoalchemy2 import Geometry
 from sqlalchemy import (
     JSON,
     CheckConstraint,
@@ -119,6 +120,100 @@ class FacilityEntityMember(Base):
         ForeignKey("catalog.objects.id", ondelete="RESTRICT"), primary_key=True
     )
     geometry_role: Mapped[str] = mapped_column(String(24))
+    lifecycle_status: Mapped[str] = mapped_column(
+        String(16), default="active", server_default="active"
+    )
+    link_method: Mapped[str] = mapped_column(String(255))
+    evidence: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=dict, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class StreetEntity(Base):
+    __tablename__ = "street_entities"
+    __table_args__ = (
+        CheckConstraint(
+            "lifecycle_status IN ('active','inactive')", name="lifecycle_status"
+        ),
+        CheckConstraint(
+            "lifecycle_status <> 'active' OR "
+            "(geom IS NOT NULL AND representative_point IS NOT NULL "
+            "AND NOT ST_IsEmpty(geom) AND ST_IsValid(geom))",
+            name="active_geometry",
+        ),
+        Index(
+            "ix_domain_street_entities_search_name_trgm",
+            "search_name",
+            postgresql_using="gin",
+            postgresql_ops={"search_name": "gin_trgm_ops"},
+            postgresql_where=text("lifecycle_status = 'active'"),
+        ),
+        Index(
+            "ix_domain_street_entities_geom_gist",
+            "geom",
+            postgresql_using="gist",
+            postgresql_where=text("lifecycle_status = 'active'"),
+        ),
+        {"schema": "domain"},
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    display_name: Mapped[str] = mapped_column(Text())
+    search_name: Mapped[str] = mapped_column(Text())
+    geom: Mapped[Any | None] = mapped_column(
+        Geometry("MULTILINESTRING", srid=4326, spatial_index=False)
+    )
+    representative_point: Mapped[Any | None] = mapped_column(
+        Geometry("POINT", srid=4326, spatial_index=False)
+    )
+    lifecycle_status: Mapped[str] = mapped_column(
+        String(16), default="active", server_default="active"
+    )
+    link_method: Mapped[str] = mapped_column(String(255))
+    evidence: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=dict, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class StreetEntityMember(Base):
+    __tablename__ = "street_entity_members"
+    __table_args__ = (
+        CheckConstraint(
+            "lifecycle_status IN ('active','inactive')", name="lifecycle_status"
+        ),
+        Index(
+            "ix_domain_street_members_object_status",
+            "canonical_object_id",
+            "lifecycle_status",
+        ),
+        Index(
+            "uq_domain_street_members_active_object",
+            "canonical_object_id",
+            unique=True,
+            postgresql_where=text("lifecycle_status = 'active'"),
+        ),
+        {"schema": "domain"},
+    )
+
+    street_entity_id: Mapped[UUID] = mapped_column(
+        ForeignKey("domain.street_entities.id", ondelete="CASCADE"), primary_key=True
+    )
+    canonical_object_id: Mapped[UUID] = mapped_column(
+        ForeignKey("catalog.objects.id", ondelete="RESTRICT"), primary_key=True
+    )
     lifecycle_status: Mapped[str] = mapped_column(
         String(16), default="active", server_default="active"
     )

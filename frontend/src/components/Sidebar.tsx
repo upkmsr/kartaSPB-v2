@@ -16,7 +16,7 @@ export type SidebarProps = {
   districtIds: readonly string[];
   visibleLayerIds: ReadonlySet<string>;
   searchCategoryKeys: readonly string[];
-  selectedObjectId: string | null;
+  selectedSearchResultId: string | null;
   zoom: number;
   onExpandedChange: (expanded: boolean) => void;
   onDistrictToggle: (districtId: string) => void;
@@ -37,7 +37,7 @@ export function Sidebar({
   districtIds,
   visibleLayerIds,
   searchCategoryKeys,
-  selectedObjectId,
+  selectedSearchResultId,
   zoom,
   onExpandedChange,
   onDistrictToggle,
@@ -74,7 +74,7 @@ export function Sidebar({
           <SearchSection
             districtIds={districtIds}
             categoryKeys={searchCategoryKeys}
-            selectedObjectId={selectedObjectId}
+            selectedResultId={selectedSearchResultId}
             onResultActivate={onSearchResultActivate}
           />
 

@@ -9,6 +9,8 @@ import {
 
 const result: SearchResult = {
   id: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+  result_type: "object",
+  detail_object_id: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
   name: "Озерки",
   categories: ["transport.stop"],
   object_kind: "feature",
@@ -20,6 +22,7 @@ const result: SearchResult = {
 describe("search API", () => {
   it("normalizes query and builds 0/1/N scoped requests", () => {
     expect(normalizeSearchQuery("  ЁЛОЧНАЯ   Аптека ")).toBe("елочная аптека");
+    expect(normalizeSearchQuery("  Ａ\u00a0  ЁЛОЧНАЯ ")).toBe("a елочная");
     const unscoped = new URL(buildSearchUrl({ query: "невский" }), "http://localhost");
     expect(unscoped.searchParams.get("q")).toBe("невский");
     expect(unscoped.searchParams.get("limit")).toBe("20");
@@ -38,6 +41,12 @@ describe("search API", () => {
       "healthcare.pharmacy,transport.stop",
     );
     expect(scoped.searchParams.get("districts")).toBe("district-a,district-b");
+
+    const streetsOnly = new URL(
+      buildSearchUrl({ query: "невский", includeObjects: false }),
+      "http://localhost",
+    );
+    expect(streetsOnly.searchParams.get("include_objects")).toBe("false");
   });
 
   it("rejects out-of-contract queries before a request", () => {
@@ -61,6 +70,19 @@ describe("search API", () => {
       }),
     );
     await expect(fetchSearchResults({ query: "озерки" })).rejects.toThrow(
+      "invalid response",
+    );
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          type: "SearchResults",
+          results: [{ ...result, result_type: "street", detail_object_id: "bad" }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    await expect(fetchSearchResults({ query: "невский" })).rejects.toThrow(
       "invalid response",
     );
   });

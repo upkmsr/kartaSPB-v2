@@ -6,6 +6,7 @@ from app.api.search_validation import parse_optional_categories, parse_search_qu
 
 def test_search_query_normalizes_case_whitespace_and_yo() -> None:
     assert parse_search_query("  ЁЛОЧНАЯ   Аптека ") == "елочная аптека"
+    assert parse_search_query("  Ａ\u00a0  ЁЛОЧНАЯ ") == "a елочная"
 
 
 @pytest.mark.parametrize("value", ["", " ", "a", "я", "не", "x" * 101])

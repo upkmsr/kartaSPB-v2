@@ -6,6 +6,8 @@ import { SearchSection } from "./SearchSection";
 const results: SearchResult[] = [
   {
     id: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+    result_type: "object",
+    detail_object_id: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
     name: "Аптека № 1",
     categories: ["healthcare.pharmacy"],
     object_kind: "feature",
@@ -15,6 +17,8 @@ const results: SearchResult[] = [
   },
   {
     id: "0014437e-092b-479f-a006-10c926604682",
+    result_type: "facility",
+    detail_object_id: "10000000-0000-0000-0000-000000000001",
     name: "Аптекарский сад с очень длинным названием",
     categories: ["nature.park", "education.school", "transport.stop"],
     object_kind: "feature",
@@ -37,7 +41,7 @@ const renderSearch = (
     <SearchSection
       districtIds={[]}
       categoryKeys={["healthcare.pharmacy", "nature.park"]}
-      selectedObjectId={null}
+      selectedResultId={null}
       onResultActivate={vi.fn()}
       {...props}
     />,
@@ -95,7 +99,7 @@ describe("SearchSection", () => {
       signal = init?.signal as AbortSignal;
       return new Promise<Response>(() => undefined);
     });
-    renderSearch({ selectedObjectId: results[0].id });
+    renderSearch({ selectedResultId: results[0].id });
     const input = screen.getByRole("textbox", { name: "Поиск объектов" });
     fireEvent.change(input, { target: { value: "аптека" } });
     await act(async () => vi.advanceTimersByTimeAsync(250));
@@ -110,7 +114,7 @@ describe("SearchSection", () => {
   it("renders human labels, selected state, and supports Arrow keys, Enter, and Escape", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(response(results));
     const onResultActivate = vi.fn();
-    renderSearch({ selectedObjectId: results[1].id, onResultActivate });
+    renderSearch({ selectedResultId: results[1].id, onResultActivate });
     const input = screen.getByRole("textbox", { name: "Поиск объектов" });
     fireEvent.change(input, { target: { value: "аптека" } });
     await act(async () => vi.advanceTimersByTimeAsync(250));
@@ -148,7 +152,7 @@ describe("SearchSection", () => {
       <SearchSection
         districtIds={["central", "admiralteysky"]}
         categoryKeys={["education.school"]}
-        selectedObjectId={null}
+        selectedResultId={null}
         onResultActivate={vi.fn()}
       />,
     );
@@ -163,12 +167,15 @@ describe("SearchSection", () => {
       <SearchSection
         districtIds={[]}
         categoryKeys={[]}
-        selectedObjectId={null}
+        selectedResultId={null}
         onResultActivate={vi.fn()}
       />,
     );
-    expect(screen.getByText("Включите хотя бы один слой")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTimeAsync(250));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const streetsOnly = new URL(String(fetchMock.mock.calls[2][0]), "http://localhost");
+    expect(streetsOnly.searchParams.get("include_objects")).toBe("false");
+    expect(streetsOnly.searchParams.has("categories")).toBe(false);
   });
 
   it("distinguishes empty and retryable error states", async () => {

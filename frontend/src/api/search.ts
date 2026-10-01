@@ -10,6 +10,8 @@ export type SearchBbox = [number, number, number, number];
 
 export type SearchResult = {
   id: string;
+  result_type: "object" | "facility" | "street";
+  detail_object_id: string | null;
   name: string;
   categories: string[];
   object_kind: string;
@@ -28,6 +30,7 @@ export type SearchRequest = {
   categoryKeys?: readonly string[];
   districtIds?: readonly string[];
   limit?: number;
+  includeObjects?: boolean;
 };
 
 export class SearchApiError extends Error {
@@ -56,15 +59,25 @@ const isPoint = (value: unknown): value is Point =>
 const isBbox = (value: unknown): value is SearchBbox =>
   Array.isArray(value) && value.length === 4 && value.every(Number.isFinite);
 
-const isSearchResult = (value: unknown): value is SearchResult =>
-  isRecord(value) &&
-  typeof value.id === "string" &&
-  typeof value.name === "string" &&
-  isStringArray(value.categories) &&
-  typeof value.object_kind === "string" &&
-  typeof value.geometry_type === "string" &&
-  isPoint(value.representative_point) &&
-  isBbox(value.bbox);
+const isSearchResult = (value: unknown): value is SearchResult => {
+  if (!isRecord(value)) return false;
+  const resultType = value.result_type;
+  const validIdentity =
+    resultType === "street"
+      ? value.detail_object_id === null
+      : (resultType === "object" || resultType === "facility") &&
+        typeof value.detail_object_id === "string";
+  return (
+    typeof value.id === "string" &&
+    validIdentity &&
+    typeof value.name === "string" &&
+    isStringArray(value.categories) &&
+    typeof value.object_kind === "string" &&
+    typeof value.geometry_type === "string" &&
+    isPoint(value.representative_point) &&
+    isBbox(value.bbox)
+  );
+};
 
 const isSearchResponse = (value: unknown): value is SearchResponse =>
   isRecord(value) &&
@@ -73,13 +86,20 @@ const isSearchResponse = (value: unknown): value is SearchResponse =>
   value.results.every(isSearchResult);
 
 export const normalizeSearchQuery = (query: string): string =>
-  query.trim().toLocaleLowerCase("ru-RU").replaceAll("ё", "е").replace(/\s+/g, " ");
+  query
+    .normalize("NFKC")
+    .replaceAll("\u00a0", " ")
+    .trim()
+    .toLocaleLowerCase("ru-RU")
+    .replaceAll("ё", "е")
+    .replace(/\s+/g, " ");
 
 export const buildSearchUrl = ({
   query,
   categoryKeys = [],
   districtIds = [],
   limit = 20,
+  includeObjects = true,
 }: SearchRequest): string => {
   const normalizedQuery = normalizeSearchQuery(query);
   if (
@@ -91,6 +111,7 @@ export const buildSearchUrl = ({
   const params = new URLSearchParams({ q: normalizedQuery, limit: String(limit) });
   if (categoryKeys.length > 0) params.set("categories", categoryKeys.join(","));
   if (districtIds.length > 0) params.set("districts", districtIds.join(","));
+  if (!includeObjects) params.set("include_objects", "false");
   return `${apiBaseUrl}/api/search?${params.toString()}`;
 };
 

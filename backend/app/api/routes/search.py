@@ -46,6 +46,14 @@ def search(
         str | None, Query(description="Optional comma-separated domain district UUIDs")
     ] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    include_objects: Annotated[
+        bool,
+        Query(
+            description=(
+                "Include ordinary objects/facilities; streets remain searchable independently"
+            )
+        ),
+    ] = True,
 ) -> SearchResultList:
     try:
         parsed_query = parse_search_query(q)
@@ -55,7 +63,7 @@ def search(
         raise _error(ErrorDetail(code="invalid_request", message=str(exc))) from exc
     try:
         results = service.search(
-            parsed_query, parsed_categories, parsed_districts, limit
+            parsed_query, parsed_categories, parsed_districts, limit, include_objects
         )
     except UnknownCategoriesError as exc:
         raise _error(
@@ -78,6 +86,8 @@ def search(
         results=[
             SearchResult(
                 id=result.id,
+                result_type=result.result_type,
+                detail_object_id=result.detail_object_id,
                 name=result.name,
                 categories=result.categories,
                 object_kind=result.object_kind,

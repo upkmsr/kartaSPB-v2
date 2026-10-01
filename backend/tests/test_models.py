@@ -10,6 +10,8 @@ from app.db.models import (
     ObjectSource,
     OsmProfileMembership,
     OsmRelationGeometry,
+    StreetEntity,
+    StreetEntityMember,
 )
 
 
@@ -76,6 +78,7 @@ def test_catalog_models_use_provider_independent_schema() -> None:
         "object_kind",
         "lifecycle_status",
         "search_name",
+        "search_name_v2",
         "geom",
         "name_source_id",
         "geometry_source_id",
@@ -120,5 +123,23 @@ def test_logical_facility_models_reference_canonical_objects() -> None:
     }
     assert {column.name for column in FacilityEntityMember.__table__.primary_key.columns} == {
         "facility_entity_id",
+        "canonical_object_id",
+    }
+
+
+def test_logical_street_models_reference_canonical_road_members() -> None:
+    assert StreetEntity.__table__.schema == "domain"
+    assert StreetEntityMember.__table__.schema == "domain"
+    assert {column.name for column in StreetEntity.__table__.columns} >= {
+        "display_name",
+        "search_name",
+        "geom",
+        "representative_point",
+        "lifecycle_status",
+        "link_method",
+        "evidence",
+    }
+    assert {column.name for column in StreetEntityMember.__table__.primary_key.columns} == {
+        "street_entity_id",
         "canonical_object_id",
     }

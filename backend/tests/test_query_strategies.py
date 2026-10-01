@@ -40,18 +40,23 @@ def test_dense_transport_categories_use_spatial_first_map_query() -> None:
     assert "selected_category.object_id = candidate.id" in stop_sql
 
 
-def test_search_query_builds_indexable_candidate_branches_before_geometry() -> None:
+def test_search_v2_builds_indexable_entity_branches_before_final_limit() -> None:
     sql = str(SEARCH_SQL[(False, "none")])
 
-    assert "candidate_ids AS MATERIALIZED" in sql
-    assert "object.search_name LIKE" in sql
-    assert "object.search_name % input.value" not in sql
-    assert " OR " not in sql
+    assert "ordinary_results AS MATERIALIZED" in sql
+    assert "facility_results AS MATERIALIZED" in sql
+    assert "street_results AS MATERIALIZED" in sql
+    assert "logical_results AS MATERIALIZED" in sql
+    assert "object.search_name_v2 LIKE" in sql
+    assert "street.search_name LIKE" in sql
+    assert "object.search_name_v2 % input.value" not in sql
     assert "CROSS JOIN LATERAL" in sql
-    assert "WHERE matched.id = candidate.id" in sql
+    assert "domain.facility_entity_members" in sql
+    assert "domain.street_entity_members" in sql
+    assert "UNION ALL SELECT * FROM facility_results" in sql
+    assert "UNION ALL SELECT * FROM street_results" in sql
     assert "top_results AS MATERIALIZED" in sql
-    assert "JOIN catalog.objects AS object ON object.id = result.id" in sql
-    assert sql.index("candidate_ids AS MATERIALIZED") < sql.index("ranked AS MATERIALIZED")
+    assert sql.index("logical_results AS MATERIALIZED") < sql.index("ranked AS MATERIALIZED")
     assert sql.index("ranked AS MATERIALIZED") < sql.index("top_results AS MATERIALIZED")
 
 

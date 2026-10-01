@@ -32,6 +32,7 @@ export function App() {
   const [selectedDistrictIds, setSelectedDistrictIds] = useState<Set<string>>(new Set());
   const [navigationRequest, setNavigationRequest] = useState<MapNavigationRequest | null>(null);
   const [objectSelection, setObjectSelection] = useState<ObjectSelection | null>(null);
+  const [selectedSearchResultId, setSelectedSearchResultId] = useState<string | null>(null);
   const navigationSequenceRef = useRef(0);
 
   useEffect(() => {
@@ -106,7 +107,12 @@ export function App() {
   };
 
   const activateSearchResult = (result: SearchResult) => {
-    setObjectSelection({ id: result.id, origin: "search" });
+    setSelectedSearchResultId(result.id);
+    setObjectSelection(
+      result.detail_object_id === null
+        ? null
+        : { id: result.detail_object_id, origin: "search" },
+    );
     navigate(searchResultNavigation(result));
   };
 
@@ -139,7 +145,7 @@ export function App() {
           districtIds={districtIds}
           visibleLayerIds={visibleLayerIds}
           searchCategoryKeys={searchCategoryKeys}
-          selectedObjectId={objectSelection?.id ?? null}
+          selectedSearchResultId={selectedSearchResultId}
           zoom={zoom}
           onExpandedChange={setSidebarExpanded}
           onDistrictToggle={toggleDistrict}
@@ -156,8 +162,14 @@ export function App() {
           districtIds={districtIds}
           navigationRequest={navigationRequest}
           objectSelection={objectSelection}
-          onObjectSelect={(id) => setObjectSelection({ id, origin: "map" })}
-          onObjectClose={() => setObjectSelection(null)}
+          onObjectSelect={(id) => {
+            setSelectedSearchResultId(null);
+            setObjectSelection({ id, origin: "map" });
+          }}
+          onObjectClose={() => {
+            setSelectedSearchResultId(null);
+            setObjectSelection(null);
+          }}
           onZoomChange={setZoom}
         />
       </div>

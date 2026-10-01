@@ -13,7 +13,6 @@ type SearchState =
   | { status: "idle" }
   | { status: "below-minimum" }
   | { status: "loading" }
-  | { status: "no-categories" }
   | { status: "results"; results: SearchResult[] }
   | { status: "empty" }
   | { status: "error" };
@@ -21,14 +20,14 @@ type SearchState =
 export type SearchSectionProps = {
   districtIds: readonly string[];
   categoryKeys: readonly string[];
-  selectedObjectId: string | null;
+  selectedResultId: string | null;
   onResultActivate: (result: SearchResult) => void;
 };
 
 export function SearchSection({
   districtIds,
   categoryKeys,
-  selectedObjectId,
+  selectedResultId,
   onResultActivate,
 }: SearchSectionProps) {
   const [query, setQuery] = useState("");
@@ -55,13 +54,6 @@ export function SearchSection({
       setActiveIndex(-1);
       return;
     }
-    if (categoryKeys.length === 0) {
-      request.cancel();
-      setState({ status: "no-categories" });
-      setActiveIndex(-1);
-      return;
-    }
-
     setState({ status: "loading" });
     setListOpen(true);
     setActiveIndex(-1);
@@ -72,6 +64,7 @@ export function SearchSection({
           categoryKeys,
           districtIds,
           limit: 20,
+          includeObjects: categoryKeys.length > 0,
         },
         (results) => {
           setState(results.length > 0 ? { status: "results", results } : { status: "empty" });
@@ -191,11 +184,6 @@ export function SearchSection({
           <span className="loading-dot" /> Ищем объекты…
         </div>
       )}
-      {listOpen && state.status === "no-categories" && (
-        <div className="search-control__state" role="status">
-          Включите хотя бы один слой
-        </div>
-      )}
       {listOpen && state.status === "empty" && (
         <div className="search-control__state" role="status">
           Ничего не найдено
@@ -212,7 +200,7 @@ export function SearchSection({
       {listOpen && state.status === "results" && (
         <ul className="search-results" id="catalog-search-results" aria-label="Результаты поиска">
           {state.results.map((result, index) => {
-            const selected = selectedObjectId === result.id;
+            const selected = selectedResultId === result.id;
             const labels = result.categories.slice(0, 2).map(categoryLabel);
             const remaining = result.categories.length - labels.length;
             return (

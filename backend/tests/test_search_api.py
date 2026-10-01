@@ -11,7 +11,7 @@ from app.main import app
 
 class FakeSearchService:
     def __init__(self) -> None:
-        self.call: tuple[str, tuple[str, ...], tuple[UUID, ...], int] | None = None
+        self.call: tuple[str, tuple[str, ...], tuple[UUID, ...], int, bool] | None = None
 
     def search(
         self,
@@ -19,11 +19,14 @@ class FakeSearchService:
         categories: tuple[str, ...],
         district_ids: tuple[UUID, ...],
         limit: int,
+        include_objects: bool,
     ) -> list[SearchResultData]:
-        self.call = (query, categories, district_ids, limit)
+        self.call = (query, categories, district_ids, limit, include_objects)
         return [
             SearchResultData(
                 id=UUID("c49e54e1-3481-4b07-9f81-0b161b57b62b"),
+                result_type="object",
+                detail_object_id=UUID("c49e54e1-3481-4b07-9f81-0b161b57b62b"),
                 name="Озерки",
                 categories=["transport.stop"],
                 object_kind="feature",
@@ -51,12 +54,14 @@ def test_search_contract_and_defaults(client: TestClient) -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert service.call == ("езерки", ("transport.stop",), (district,), 20)
+    assert service.call == ("езерки", ("transport.stop",), (district,), 20, True)
     assert response.json() == {
         "type": "SearchResults",
         "results": [
             {
                 "id": "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+                "result_type": "object",
+                "detail_object_id": "c49e54e1-3481-4b07-9f81-0b161b57b62b",
                 "name": "Озерки",
                 "categories": ["transport.stop"],
                 "object_kind": "feature",
@@ -76,7 +81,9 @@ def test_search_rejects_invalid_query_and_limit(client: TestClient) -> None:
     app.dependency_overrides[get_search_catalog_service] = lambda: service
     try:
         short = client.get("/api/search", params={"q": "не"})
-        minimum = client.get("/api/search", params={"q": "нев"})
+        minimum = client.get(
+            "/api/search", params={"q": "нев", "include_objects": "false"}
+        )
         large_limit = client.get("/api/search", params={"q": "park", "limit": 51})
     finally:
         app.dependency_overrides.clear()
@@ -84,7 +91,7 @@ def test_search_rejects_invalid_query_and_limit(client: TestClient) -> None:
     assert short.status_code == 422
     assert short.json()["detail"]["code"] == "invalid_request"
     assert minimum.status_code == 200
-    assert service.call == ("нев", (), (), 20)
+    assert service.call == ("нев", (), (), 20, False)
     assert large_limit.status_code == 422
 
 
@@ -96,6 +103,7 @@ def test_search_errors_are_machine_readable(client: TestClient) -> None:
             categories: tuple[str, ...],
             district_ids: tuple[UUID, ...],
             limit: int,
+            include_objects: bool,
         ) -> list[SearchResultData]:
             raise UnknownCategoriesError(["unknown"])
 
@@ -116,6 +124,7 @@ def test_search_errors_are_machine_readable(client: TestClient) -> None:
             categories: tuple[str, ...],
             district_ids: tuple[UUID, ...],
             limit: int,
+            include_objects: bool,
         ) -> list[SearchResultData]:
             raise UnknownDistrictsError(list(district_ids), [])
 
@@ -140,6 +149,7 @@ def test_openapi_exposes_search_filters(client: TestClient) -> None:
         "categories",
         "districts",
         "limit",
+        "include_objects",
     }
     query = next(
         parameter for parameter in operation["parameters"] if parameter["name"] == "q"

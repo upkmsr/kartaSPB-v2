@@ -33,6 +33,7 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
     ]
     all_object_ids = [district_object_id, *object_ids]
     facility_id = uuid4()
+    street_id = uuid4()
     try:
         with engine.begin() as connection:
             connection.execute(
@@ -62,7 +63,7 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
                        ST_Point(10.1,10.1,4326),'{}','{}',1),
                       (:exact2,'feature','active','АПТЕКА',
                        ST_Point(10.2,10.2,4326),'{}','{}',1),
-                      (:partial,'feature','active','Аптека Озерки',
+                      (:partial,'feature','active','Аптека Озерки',
                        ST_Point(11,11,4326),'{}','{}',1),
                       (:yo,'feature','active','Ёлочная аптека',
                        ST_Point(10.3,10.3,4326),'{}','{}',1),
@@ -152,6 +153,8 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
             str(object_ids[1]),
         ]
         assert len({item["id"] for item in ranked_results}) == 4
+        assert all(item["result_type"] == "object" for item in ranked_results)
+        assert all(item["detail_object_id"] == item["id"] for item in ranked_results)
         assert all("score" not in item for item in ranked_results)
         assert ranked_results[0]["representative_point"] == {
             "type": "Point",
@@ -192,14 +195,33 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
         represented = next(
             item
             for item in representation_search.json()["results"]
-            if item["id"] == str(object_ids[0])
+            if item["id"] == str(facility_id)
         )
+        assert represented["result_type"] == "facility"
+        assert represented["detail_object_id"] == str(object_ids[0])
         assert represented["geometry_type"] == "Polygon"
         assert represented["bbox"] == [10.15, 10.15, 10.25, 10.25]
         assert represented["representative_point"] == {
             "type": "Point",
             "coordinates": [10.2, 10.2],
         }
+        represented_ids = {item["id"] for item in representation_search.json()["results"]}
+        assert str(object_ids[0]) not in represented_ids
+        assert str(object_ids[4]) not in represented_ids
+        collapsed_limit = client.get(
+            "/api/search", params={"q": "аптека", "categories": category_a, "limit": 1}
+        )
+        assert [item["id"] for item in collapsed_limit.json()["results"]] == [
+            str(facility_id)
+        ]
+
+        normalized_nbsp = client.get(
+            "/api/search", params={"q": "аптека озерки", "categories": category_a}
+        )
+        assert normalized_nbsp.status_code == 200
+        assert [item["id"] for item in normalized_nbsp.json()["results"]] == [
+            str(object_ids[2])
+        ]
 
         normalized_yo = client.get(
             "/api/search", params={"q": "елочная", "categories": category_a}
@@ -227,34 +249,61 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
         )
         assert district_filtered.status_code == 200
         assert {item["id"] for item in district_filtered.json()["results"]} == {
-            str(object_ids[0]),
+            str(facility_id),
             str(object_ids[1]),
             str(object_ids[3]),
         }
 
-        polygon = client.get(
-            "/api/search", params={"q": "невский парк", "categories": category_b}
-        )
-        assert polygon.status_code == 200
-        polygon_result = polygon.json()["results"][0]
-        assert polygon_result["geometry_type"] == "Polygon"
-        assert polygon_result["representative_point"] == {
-            "type": "Point",
-            "coordinates": [10.2, 10.2],
-        }
-        assert polygon_result["bbox"] == [10.15, 10.15, 10.25, 10.25]
-        assert polygon_result["categories"] == [category_b]
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO domain.street_entities
+                      (id,display_name,search_name,geom,representative_point,
+                       lifecycle_status,link_method,evidence)
+                    VALUES (:id,'Search midpoint road','search midpoint road',
+                      ST_GeomFromText('MULTILINESTRING((10.1 10.1,10.3 10.1))',4326),
+                      ST_Point(10.2,10.1,4326),'active','fixture','{}')
+                    """
+                ),
+                {"id": street_id},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO domain.street_entity_members
+                      (street_entity_id,canonical_object_id,lifecycle_status,
+                       link_method,evidence)
+                    VALUES (:street,:object,'active','fixture','{}')
+                    """
+                ),
+                {"street": street_id, "object": object_ids[6]},
+            )
 
-        line = client.get(
-            "/api/search", params={"q": "search midpoint road", "categories": category_b}
-        )
+        line = client.get("/api/search", params={"q": "search midpoint road"})
         assert line.status_code == 200
         line_result = line.json()["results"][0]
-        assert line_result["geometry_type"] == "LineString"
+        assert line_result["id"] == str(street_id)
+        assert line_result["result_type"] == "street"
+        assert line_result["detail_object_id"] is None
+        assert line_result["geometry_type"] == "MultiLineString"
         assert line_result["representative_point"] == {
             "type": "Point",
             "coordinates": [10.2, 10.1],
         }
+        street_only = client.get(
+            "/api/search",
+            params={"q": "search midpoint road", "include_objects": "false"},
+        )
+        assert [item["id"] for item in street_only.json()["results"]] == [str(street_id)]
+
+        district_street = client.get(
+            "/api/search",
+            params={"q": "search midpoint road", "districts": district_id},
+        )
+        assert [item["id"] for item in district_street.json()["results"]] == [
+            str(street_id)
+        ]
 
         multipolygon = client.get(
             "/api/search",
@@ -282,6 +331,14 @@ def test_search_ranking_filters_geometry_and_duplicate_names(client: TestClient)
         assert unknown_district.json()["detail"]["code"] == "unknown_district"
     finally:
         with engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM domain.street_entity_members WHERE street_entity_id=:id"),
+                {"id": street_id},
+            )
+            connection.execute(
+                text("DELETE FROM domain.street_entities WHERE id=:id"),
+                {"id": street_id},
+            )
             connection.execute(
                 text("DELETE FROM domain.facility_entity_members WHERE facility_entity_id=:id"),
                 {"id": facility_id},

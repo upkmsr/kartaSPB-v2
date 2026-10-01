@@ -1,13 +1,12 @@
-import re
-
 from app.api.map_validation import MapRequestValidationError, parse_categories
+from app.data.search_normalization import normalize_search_text
 
 MIN_SEARCH_QUERY_LENGTH = 3
 MAX_SEARCH_QUERY_LENGTH = 100
 
 
 def parse_search_query(value: str) -> str:
-    normalized = re.sub(r"\s+", " ", value.strip().lower().replace("ё", "е"))
+    normalized = normalize_search_text(value)
     if len(normalized) < MIN_SEARCH_QUERY_LENGTH:
         raise MapRequestValidationError(
             f"q must contain at least {MIN_SEARCH_QUERY_LENGTH} characters"

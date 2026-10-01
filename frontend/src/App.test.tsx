@@ -171,6 +171,8 @@ describe("App", () => {
             results: [
               {
                 id: resultId,
+                result_type: "object",
+                detail_object_id: resultId,
                 name: "Аптека у Невы",
                 categories: ["healthcare.pharmacy"],
                 object_kind: "feature",
@@ -220,5 +222,104 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Аптека у Невы" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Закрыть карточку" }));
     expect(screen.queryByLabelText("Карточка объекта")).not.toBeInTheDocument();
+  });
+
+  it("uses a facility logical ID for selection and its canonical detail target", async () => {
+    const facilityId = "aaaaaaaa-0000-0000-0000-000000000001";
+    const detailId = "bbbbbbbb-0000-0000-0000-000000000001";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/health/ready")) return Promise.resolve(response(readiness));
+      if (url.includes("/api/districts")) return Promise.resolve(response({ districts }));
+      if (url.includes("/api/search")) {
+        return Promise.resolve(
+          response({
+            type: "SearchResults",
+            results: [
+              {
+                id: facilityId,
+                result_type: "facility",
+                detail_object_id: detailId,
+                name: "Школа № 1",
+                categories: ["education.school"],
+                object_kind: "feature",
+                geometry_type: "Polygon",
+                representative_point: { type: "Point", coordinates: [30.3, 59.9] },
+                bbox: [30.29, 59.89, 30.31, 59.91],
+              },
+            ],
+          }),
+        );
+      }
+      if (url.includes(`/api/objects/${detailId}`)) {
+        return Promise.resolve(
+          response({
+            id: detailId,
+            name: "Школа № 1",
+            categories: ["education.school"],
+            object_kind: "feature",
+            geometry_type: "Point",
+            properties: {},
+            sources: [],
+          }),
+        );
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    render(<App />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Поиск объектов" }), {
+      target: { value: "школа" },
+    });
+    const result = await screen.findByRole("button", { name: /Школа № 1.*Школы/ });
+    fireEvent.click(result);
+
+    expect(result).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("map-selected")).toHaveTextContent(detailId);
+    expect(await screen.findByRole("heading", { name: "Школа № 1" })).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([request]) => String(request).includes(`/api/objects/${facilityId}`)),
+    ).toBe(false);
+  });
+
+  it("navigates a street bbox without requesting canonical details for its UUID", async () => {
+    const streetId = "cccccccc-0000-0000-0000-000000000001";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/health/ready")) return Promise.resolve(response(readiness));
+      if (url.includes("/api/districts")) return Promise.resolve(response({ districts }));
+      if (url.includes("/api/search")) {
+        return Promise.resolve(
+          response({
+            type: "SearchResults",
+            results: [
+              {
+                id: streetId,
+                result_type: "street",
+                detail_object_id: null,
+                name: "Невский проспект",
+                categories: ["transport.road"],
+                object_kind: "street",
+                geometry_type: "MultiLineString",
+                representative_point: { type: "Point", coordinates: [30.34, 59.93] },
+                bbox: [30.31, 59.92, 30.39, 59.94],
+              },
+            ],
+          }),
+        );
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    render(<App />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Поиск объектов" }), {
+      target: { value: "невский" },
+    });
+    const result = await screen.findByRole("button", { name: /Невский проспект.*Дороги/ });
+    fireEvent.click(result);
+
+    expect(screen.getByTestId("map-navigation")).toHaveTextContent("30.31,59.92,30.39,59.94");
+    expect(screen.getByTestId("map-selected")).toBeEmptyDOMElement();
+    expect(fetchMock.mock.calls.some(([request]) => String(request).includes("/api/objects/"))).toBe(
+      false,
+    );
   });
 });
