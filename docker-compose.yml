@@ -7,13 +7,16 @@ x-backend-environment: &backend-environment
 
 services:
   db:
-    image: postgis/postgis:17-3.5
+    build:
+      context: .
+      dockerfile: db/Dockerfile
+    image: kartaspb-v2-db:postgres17-postgis3.6
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-kartaspb}
       POSTGRES_USER: ${POSTGRES_USER:-kartaspb}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:

@@ -37,7 +37,8 @@ Stop services while retaining the database:
 docker compose down
 ```
 
-Remove the local database volume as well:
+Remove the local database volume as well. This is only for a disposable development
+project; never run it against production:
 
 ```bash
 docker compose down -v

@@ -9,6 +9,37 @@ permissions:
   contents: read
 
 jobs:
+  database-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build project PostgreSQL/PostGIS image
+        run: docker build -f db/Dockerfile -t kartaspb-ci-db .
+      - name: Start database runtime
+        run: >-
+          docker run -d --name kartaspb-ci-db
+          -e POSTGRES_DB=kartaspb
+          -e POSTGRES_USER=kartaspb
+          -e POSTGRES_PASSWORD=test-password
+          --health-cmd='pg_isready -U kartaspb -d kartaspb'
+          --health-interval=2s --health-timeout=2s --health-retries=30
+          kartaspb-ci-db
+      - name: Wait for database health
+        run: |
+          for attempt in $(seq 1 30); do
+            [ "$(docker inspect kartaspb-ci-db --format '{{.State.Health.Status}}')" = healthy ] && exit 0
+            sleep 2
+          done
+          docker logs kartaspb-ci-db
+          exit 1
+      - name: Verify native runtime architecture
+        run: ./scripts/check-db-architecture.sh kartaspb-ci-db
+      - name: Verify PostgreSQL and PostGIS
+        run: |
+          docker exec kartaspb-ci-db psql -U kartaspb -d kartaspb -v ON_ERROR_STOP=1 \
+            -c 'CREATE EXTENSION postgis' \
+            -c 'SELECT version(), PostGIS_Full_Version()'
+
   backend:
     runs-on: ubuntu-latest
     services:

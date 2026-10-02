@@ -10,6 +10,21 @@ docker compose up --build --wait
 
 Compose waits for PostgreSQL, runs Alembic to completion, then starts the API and frontend. Readiness requires a database connection, a working PostGIS function, and an Alembic revision matching the code's current head.
 
+The database image is built from `db/Dockerfile`: the official multi-arch
+PostgreSQL 17.5 Bookworm image plus the pinned PGDG PostGIS 3 package. Docker
+must select an image matching the Docker VM architecture; do not add
+`platform: linux/amd64` on an arm64 VM. Verify a running stack with:
+
+```bash
+make db-architecture
+```
+
+Database runtime migrations use logical `pg_dump`/`pg_restore` into a fresh
+volume. Never attach an existing production PGDATA volume to a different
+runtime image as an architecture-migration shortcut. The production procedure
+and rollback boundary are documented in the
+[native database cutover runbook](native-database-cutover.md).
+
 The OSM tools are pinned in `ingest/Dockerfile`. Confirm the installed versions with:
 
 ```bash
@@ -81,24 +96,32 @@ Handled PBF validation, Osmium, osm2pgsql, and merge errors finish the current i
 
 ## Clean-database acceptance
 
-This deliberately removes the local KARTASPB v2 database volume:
+Use a distinct disposable project for clean-database acceptance. The alternate ports
+avoid the normal development or production project, and `down -v` targets only this
+explicit project:
 
 ```bash
-docker compose down -v
-docker compose up --build --wait
-curl --fail http://localhost:8000/api/health/live
-curl --fail http://localhost:8000/api/health/ready
+POSTGRES_PORT=15436 BACKEND_PORT=18012 FRONTEND_PORT=15185 \
+  docker compose -p kartaspb-native-ci up --build --wait
+./scripts/check-db-architecture.sh kartaspb-native-ci-db-1
+curl --fail http://localhost:18012/api/health/live
+curl --fail http://localhost:18012/api/health/ready
 ```
 
 Verify failure and recovery behaviour:
 
 ```bash
-docker compose stop db
-curl --fail http://localhost:8000/api/health/ready # expected to fail
-docker compose start db
-docker compose up --wait
-curl --fail http://localhost:8000/api/health/ready
+docker compose -p kartaspb-native-ci stop db
+curl --fail http://localhost:18012/api/health/ready # expected to fail
+docker compose -p kartaspb-native-ci start db
+POSTGRES_PORT=15436 BACKEND_PORT=18012 FRONTEND_PORT=15185 \
+  docker compose -p kartaspb-native-ci up --wait
+curl --fail http://localhost:18012/api/health/ready
+docker compose -p kartaspb-native-ci down -v
 ```
+
+Never use `docker compose down -v` with the production project. Database runtime
+migrations must preserve the old volume and restore a logical dump into a new volume.
 
 ## Backend on the host
 

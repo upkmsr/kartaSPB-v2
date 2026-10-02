@@ -1,4 +1,4 @@
-.PHONY: up down migrate backend-test backend-quality frontend-test frontend-quality check osm-download osm-smoke osm-import osm-status osm-inspect catalog-categories
+.PHONY: up down migrate db-architecture backend-test backend-quality frontend-test frontend-quality check osm-download osm-smoke osm-import osm-status osm-inspect catalog-categories
 
 up:
 	docker compose up --build --wait
@@ -8,6 +8,9 @@ down:
 
 migrate:
 	docker compose run --rm migration
+
+db-architecture:
+	./scripts/check-db-architecture.sh
 
 backend-test:
 	docker compose exec backend pytest
