@@ -1,7 +1,6 @@
 # Logical street entities
 
-Status: F5.5-S5 implementation and isolated rehearsal passed on 2026-10-01.
-Production migration/backfill is intentionally pending the manual visual gate.
+Status: F5.5-S5 production acceptance passed on 2026-10-02.
 
 ## Problem and identity boundary
 
@@ -137,6 +136,36 @@ and canonical/category checksums remained unchanged.
 Warm production-like API timings were 43 ms for an ordinary query, 18 ms for a
 facility query, 15 ms for an exact street query, 14 ms for a partial street query, and
 50 ms for a district-scoped street query.
+
+## Production acceptance
+
+Production runs on native arm64 PostgreSQL 17.5 with PostGIS 3.6.4 and Alembic
+revision `20261001_0010`. After the native database cutover passed its own acceptance,
+exactly one production Street refresh was run. It completed in 20.58 seconds and
+created 6,843 active Street entities with 36,416 active members: 3,688 entities have
+multiple members, the largest has 519 members, 925 normalized names intentionally
+remain spatially separated, and 43 entities have explicit relation support. No second
+production refresh or production dry-run was performed.
+
+Structural acceptance found zero duplicate active memberships, invalid entity or
+canonical references, invalid active geometries, and active entities without members.
+The refresh did not change the 417,331 active canonical objects, 417,332 active category
+assignments (417,336 total), 417,331 source bindings, 18 enabled districts, 15 active
+facilities, or 30 active facility members. Canonical geometry, category assignment,
+district binding, and facility binding checksums were identical before and after the
+transaction.
+
+Production Search v2 passed ordinary-object, facility-collapse, exact and partial
+Street, district-scoped Street, NBSP, and Russian `ё`/`е` controls. Невский проспект
+returns its logical Street UUID with a bbox and representative point and with
+`detail_object_id=null`. The same Обводный канал UUID is returned in all five
+intersecting districts. Street search remains available with ordinary objects disabled;
+ordinary and facility selections continue to open their canonical ObjectCard targets.
+
+The native database remained healthy with no ENOSPC, SIGPIPE, backend termination,
+automatic recovery, PANIC, OOM, or container restart. Full isolated regression passed
+104 backend tests, Ruff, mypy, Alembic head/model parity, 68 frontend tests, ESLint,
+TypeScript, and the production build with its MapLibre worker check.
 
 ## Reviewed real controls
 

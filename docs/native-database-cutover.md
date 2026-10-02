@@ -5,6 +5,17 @@ database runtime. It is not permission to execute the cutover. The existing cont
 image, and `kartaspb-v2_postgres-data` volume remain rollback material. Never attach
 that PGDATA volume to the new image; the transfer is logical dump and restore only.
 
+## Production status
+
+The authorised production cutover completed successfully on 2026-10-02. Production now
+runs native arm64 PostgreSQL 17.5 and PostGIS 3.6.4 in project
+`kartaspb-v2-native-r2`, with Alembic at `20261001_0010`. Restore, application/API, data
+invariant, storage, and stability acceptance passed with zero ENOSPC, crash recovery,
+restart, or OOM event. The former cross-architecture container is stopped and its
+`kartaspb-v2_postgres-data` volume remains protected rollback material; cleanup still
+requires separate explicit authorisation. The later single Street refresh is recorded
+separately in [street-entities.md](street-entities.md).
+
 ## Preconditions
 
 - repository `main`, CI, native rehearsal, and clean disposable Compose acceptance pass;
