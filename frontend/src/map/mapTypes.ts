@@ -122,11 +122,15 @@ export type MapNavigationRequest = MapNavigationTarget & { sequence: number };
 
 export type MapRequestState =
   | { status: "idle" }
-  | { status: "loading" }
-  | { status: "ready"; featureCount: number; durationMs: number }
-  | { status: "empty"; durationMs: number }
+  | { status: "pending-manual-load"; loadableLayerIds: string[] }
+  | { status: "loading"; loadableLayerIds: string[] }
+  | { status: "ready"; featureCount: number; durationMs: number; loadedLayerIds: string[] }
+  | { status: "empty"; durationMs: number; loadedLayerIds: string[] }
+  | { status: "no-enabled-layers" }
+  | { status: "waiting-for-zoom"; waitingLayerIds: string[] }
   | { status: "bbox-too-large" }
   | { status: "feature-limit" }
+  | { status: "stale-error"; message: string }
   | { status: "error"; message: string };
 
 export type ObjectCardState =

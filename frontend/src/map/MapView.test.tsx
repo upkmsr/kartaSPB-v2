@@ -293,6 +293,7 @@ describe("MapView MapLibre integration", () => {
     map.districtSource = null;
     map.layers.clear();
     act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
 
     expect(map.addedSourceData.at(-1)).toEqual(featureCollection);
     expect(map.layers.has("water-fill")).toBe(true);
@@ -301,9 +302,10 @@ describe("MapView MapLibre integration", () => {
       type: "FeatureCollection",
       features: [],
     });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("preserves source data on feature limits and bbox guard failures", async () => {
+  it("clears stale source data on feature limits and bbox guard failures", async () => {
     const onRequestStateChange = vi.fn();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -328,14 +330,20 @@ describe("MapView MapLibre integration", () => {
     await act(async () => vi.runAllTimersAsync());
 
     expect(onRequestStateChange).toHaveBeenLastCalledWith({ status: "feature-limit" });
-    expect(map.source?.setData).not.toHaveBeenCalled();
+    expect(map.source?.setData).toHaveBeenLastCalledWith({
+      type: "FeatureCollection",
+      features: [],
+    });
 
     map.bounds = { west: 30, south: 59, east: 30.6, north: 59.1 };
     act(() => map.emit("moveend"));
     await act(async () => vi.runAllTimersAsync());
     expect(onRequestStateChange).toHaveBeenLastCalledWith({ status: "bbox-too-large" });
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(map.source?.setData).not.toHaveBeenCalled();
+    expect(map.source?.setData).toHaveBeenLastCalledWith({
+      type: "FeatureCollection",
+      features: [],
+    });
   });
 
   it("clears visible canonical IDs when the last enabled layer is disabled", async () => {
@@ -452,19 +460,157 @@ describe("MapView MapLibre integration", () => {
     await act(async () => vi.runAllTimersAsync());
     expect(map.source?.setData).toHaveBeenCalledTimes(1);
 
+    map.bounds.east = 30.321;
     act(() => map.emit("moveend"));
     await act(async () => vi.runAllTimersAsync());
     expect(onRequestStateChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: "error" }),
+      expect.objectContaining({ status: "stale-error" }),
     );
     expect(map.source?.setData).toHaveBeenCalledTimes(1);
 
+    map.bounds.east = 30.322;
     act(() => map.emit("moveend"));
     await act(async () => vi.runAllTimersAsync());
     expect(onRequestStateChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: "empty" }),
     );
     expect(map.source?.setData).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not request while auto-load is off and loads latest state once on demand", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ type: "FeatureCollection", features: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const onRequestStateChange = vi.fn();
+    const baseProps = {
+      visibleLayerIds: defaultVisibleLayerIds(),
+      autoLoad: false,
+      districtIds: [] as string[],
+      navigationRequest: null,
+      selectedFeatureId: null,
+      onFeatureSelect: vi.fn(),
+      onVisibleFeatureIdsChange: vi.fn(),
+      onRequestStateChange,
+      onZoomChange: vi.fn(),
+    };
+    const { rerender } = render(<MapView {...baseProps} manualLoadSequence={0} />);
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onRequestStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "pending-manual-load" }),
+    );
+
+    const central = "161ba369-c548-5569-9cc2-679522090220";
+    const selectedDistrictIds = [central];
+    map.bounds.east = 30.321;
+    act(() => map.emit("moveend"));
+    await act(async () => vi.runAllTimersAsync());
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    rerender(<MapView {...baseProps} districtIds={selectedDistrictIds} manualLoadSequence={0} />);
+    await act(async () => vi.runAllTimersAsync());
+    expect(
+      fetchMock.mock.calls.filter(([request]) => String(request).includes("/api/map/features")),
+    ).toHaveLength(0);
+    expect(
+      fetchMock.mock.calls.filter(([request]) =>
+        String(request).includes("/api/districts/geometry"),
+      ),
+    ).toHaveLength(1);
+
+    rerender(<MapView {...baseProps} districtIds={selectedDistrictIds} manualLoadSequence={1} />);
+    await act(async () => vi.runAllTimersAsync());
+    const mapCalls = fetchMock.mock.calls.filter(([request]) =>
+      String(request).includes("/api/map/features"),
+    );
+    expect(mapCalls).toHaveLength(1);
+    const manualUrl = new URL(String(mapCalls[0][0]), "http://localhost");
+    expect(manualUrl.searchParams.get("bbox")).toBe("30.3,59.93,30.321,59.945");
+    expect(manualUrl.searchParams.get("districts")).toBe(central);
+
+    act(() => map.emit("moveend"));
+    await act(async () => vi.runAllTimersAsync());
+    expect(
+      fetchMock.mock.calls.filter(([request]) => String(request).includes("/api/map/features")),
+    ).toHaveLength(1);
+  });
+
+  it("debounces rapid viewport changes and deduplicates an identical loaded state", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ type: "FeatureCollection", features: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    render(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
+        selectedFeatureId={null}
+        onFeatureSelect={vi.fn()}
+        onVisibleFeatureIdsChange={vi.fn()}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+      />,
+    );
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    map.bounds.east = 30.321;
+    act(() => map.emit("moveend"));
+    map.bounds.east = 30.322;
+    act(() => map.emit("moveend"));
+    await act(async () => vi.runAllTimersAsync());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(
+      new URL(String(fetchMock.mock.calls[0][0]), "http://localhost").searchParams.get("bbox"),
+    ).toBe("30.3,59.93,30.322,59.945");
+
+    act(() => map.emit("moveend"));
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("distinguishes no enabled layers from enabled layers waiting for zoom", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ type: "FeatureCollection", features: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const onRequestStateChange = vi.fn();
+    const props = {
+      autoLoad: true,
+      manualLoadSequence: 0,
+      districtIds: [] as string[],
+      navigationRequest: null,
+      selectedFeatureId: null,
+      onFeatureSelect: vi.fn(),
+      onVisibleFeatureIdsChange: vi.fn(),
+      onRequestStateChange,
+      onZoomChange: vi.fn(),
+    };
+    const { rerender } = render(<MapView {...props} visibleLayerIds={new Set()} />);
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+    expect(onRequestStateChange).toHaveBeenLastCalledWith({ status: "no-enabled-layers" });
+
+    rerender(<MapView {...props} visibleLayerIds={new Set(["road"])} />);
+    await act(async () => vi.runAllTimersAsync());
+    expect(onRequestStateChange).toHaveBeenLastCalledWith({
+      status: "waiting-for-zoom",
+      waitingLayerIds: ["road"],
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("selects the stable canonical UUID from properties after worker processing", async () => {

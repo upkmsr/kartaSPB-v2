@@ -64,6 +64,8 @@ const basemapAttribution = primaryStyleUrl === DEFAULT_STYLE_URL ? BASEMAP_ATTRI
 
 export type MapViewProps = {
   visibleLayerIds: ReadonlySet<string>;
+  autoLoad?: boolean;
+  manualLoadSequence?: number;
   districtIds: readonly string[];
   navigationRequest: MapNavigationRequest | null;
   selectedFeatureId: string | null;
@@ -164,6 +166,8 @@ const updateSelectionFilters = (map: MapLibreMap, selectedId: string | null): vo
 
 export function MapView({
   visibleLayerIds,
+  autoLoad = true,
+  manualLoadSequence = 0,
   districtIds,
   navigationRequest,
   selectedFeatureId,
@@ -175,6 +179,7 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const visibleLayerIdsRef = useRef(visibleLayerIds);
+  const autoLoadRef = useRef(autoLoad);
   const districtIdsRef = useRef(districtIds);
   const selectedFeatureIdRef = useRef(selectedFeatureId);
   const onFeatureSelectRef = useRef(onFeatureSelect);
@@ -182,15 +187,21 @@ export function MapView({
   const onRequestStateChangeRef = useRef(onRequestStateChange);
   const onZoomChangeRef = useRef(onZoomChange);
   const latestDataRef = useRef<CatalogFeatureCollection>(EMPTY_FEATURE_COLLECTION);
+  const latestSuccessfulStateRef = useRef<
+    Extract<MapRequestState, { status: "ready" | "empty" }> | null
+  >(null);
+  const successfulSignatureRef = useRef<string | null>(null);
+  const inFlightSignatureRef = useRef<string | null>(null);
   const latestDistrictDataRef = useRef<DistrictGeometryFeatureCollection>(
     EMPTY_DISTRICT_GEOMETRY,
   );
   const requestRef = useRef(new LatestMapRequest());
   const districtGeometryRequestRef = useRef(new LatestDistrictGeometryRequest());
   const debounceTimerRef = useRef<number | null>(null);
-  const loadViewportRef = useRef<(delay?: number) => void>(() => undefined);
+  const loadViewportRef = useRef<(delay?: number, force?: boolean) => void>(() => undefined);
 
   visibleLayerIdsRef.current = visibleLayerIds;
+  autoLoadRef.current = autoLoad;
   districtIdsRef.current = districtIds;
   selectedFeatureIdRef.current = selectedFeatureId;
   onFeatureSelectRef.current = onFeatureSelect;
@@ -235,10 +246,47 @@ export function MapView({
       if (source) source.setData(collection as Parameters<GeoJSONSource["setData"]>[0]);
     };
 
-    const loadViewport = (delay = VIEWPORT_DEBOUNCE_MS): void => {
+    const clearCatalog = (state: MapRequestState): void => {
+      requestRef.current.cancel();
+      inFlightSignatureRef.current = null;
+      successfulSignatureRef.current = null;
+      latestSuccessfulStateRef.current = null;
+      latestDataRef.current = EMPTY_FEATURE_COLLECTION;
+      setSourceData(EMPTY_FEATURE_COLLECTION);
+      onVisibleFeatureIdsChangeRef.current(new Set());
+      onRequestStateChangeRef.current(state);
+    };
+
+    const reportLoadedState = (): void => {
+      if (latestSuccessfulStateRef.current) {
+        onRequestStateChangeRef.current(latestSuccessfulStateRef.current);
+      }
+    };
+
+    const loadViewport = (delay = VIEWPORT_DEBOUNCE_MS, force = false): void => {
       if (debounceTimerRef.current !== null) window.clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = window.setTimeout(() => {
         if (!map.getSource(SOURCE_ID)) return;
+        const enabledLayers = layerRegistry.filter((layer) =>
+          visibleLayerIdsRef.current.has(layer.id),
+        );
+        if (enabledLayers.length === 0) {
+          clearCatalog({ status: "no-enabled-layers" });
+          return;
+        }
+
+        const zoom = map.getZoom();
+        const loadableLayerIds = enabledLayers
+          .filter((layer) => zoom >= layer.minZoom)
+          .map((layer) => layer.id);
+        if (loadableLayerIds.length === 0) {
+          clearCatalog({
+            status: "waiting-for-zoom",
+            waitingLayerIds: enabledLayers.map((layer) => layer.id),
+          });
+          return;
+        }
+
         const bounds = map.getBounds();
         const requestBounds = {
           minLon: bounds.getWest(),
@@ -248,23 +296,33 @@ export function MapView({
         };
         const bboxGuard = guardBbox(requestBounds);
         if (!bboxGuard.valid) {
-          requestRef.current.cancel();
-          onRequestStateChangeRef.current({ status: "bbox-too-large" });
+          clearCatalog({ status: "bbox-too-large" });
           return;
         }
 
         const categories = activeCategoryKeys(visibleLayerIdsRef.current, map.getZoom());
-        if (categories.length === 0) {
+        const signature = JSON.stringify({
+          bbox: bboxGuard.bbox,
+          categories: [...categories].sort(),
+          districts: [...districtIdsRef.current].sort(),
+        });
+        if (!force && successfulSignatureRef.current === signature) {
+          reportLoadedState();
+          return;
+        }
+        if (!force && !autoLoadRef.current) {
           requestRef.current.cancel();
-          latestDataRef.current = EMPTY_FEATURE_COLLECTION;
-          setSourceData(EMPTY_FEATURE_COLLECTION);
-          onVisibleFeatureIdsChangeRef.current(new Set());
-          onRequestStateChangeRef.current({ status: "empty", durationMs: 0 });
+          inFlightSignatureRef.current = null;
+          onRequestStateChangeRef.current({ status: "pending-manual-load", loadableLayerIds });
+          return;
+        }
+        if (!force && inFlightSignatureRef.current === signature) {
           return;
         }
 
         const startedAt = performance.now();
-        onRequestStateChangeRef.current({ status: "loading" });
+        inFlightSignatureRef.current = signature;
+        onRequestStateChangeRef.current({ status: "loading", loadableLayerIds });
         void requestRef.current.run(
           {
             bounds: requestBounds,
@@ -273,6 +331,8 @@ export function MapView({
             limit: 5000,
           },
           (collection) => {
+            inFlightSignatureRef.current = null;
+            successfulSignatureRef.current = signature;
             latestDataRef.current = collection;
             setSourceData(collection);
             onVisibleFeatureIdsChangeRef.current(
@@ -284,21 +344,38 @@ export function MapView({
               ),
             );
             const durationMs = performance.now() - startedAt;
-            onRequestStateChangeRef.current(
+            const completedState: Extract<
+              MapRequestState,
+              { status: "ready" | "empty" }
+            > =
               collection.features.length === 0
-                ? { status: "empty", durationMs }
-                : { status: "ready", featureCount: collection.features.length, durationMs },
-            );
+                ? { status: "empty", durationMs, loadedLayerIds: loadableLayerIds }
+                : {
+                    status: "ready",
+                    featureCount: collection.features.length,
+                    durationMs,
+                    loadedLayerIds: loadableLayerIds,
+                  };
+            latestSuccessfulStateRef.current = completedState;
+            onRequestStateChangeRef.current(completedState);
           },
           (error) => {
+            inFlightSignatureRef.current = null;
             if (error instanceof MapApiError && error.code === "feature_limit_exceeded") {
-              onRequestStateChangeRef.current({ status: "feature-limit" });
+              clearCatalog({ status: "feature-limit" });
               return;
             }
-            onRequestStateChangeRef.current({
-              status: "error",
-              message: "Не удалось загрузить объекты. Переместите карту, чтобы повторить.",
-            });
+            if (latestDataRef.current.features.length > 0) {
+              onRequestStateChangeRef.current({
+                status: "stale-error",
+                message: "Не удалось обновить объекты — показаны предыдущие данные",
+              });
+            } else {
+              clearCatalog({
+                status: "error",
+                message: "Не удалось загрузить объекты. Переместите карту, чтобы повторить.",
+              });
+            }
           },
         );
       }, delay);
@@ -383,6 +460,14 @@ export function MapView({
     }
     loadViewportRef.current(0);
   }, [visibleLayerIds]);
+
+  useEffect(() => {
+    loadViewportRef.current(0);
+  }, [autoLoad]);
+
+  useEffect(() => {
+    if (manualLoadSequence > 0) loadViewportRef.current(0, true);
+  }, [manualLoadSequence]);
 
   useEffect(() => {
     loadViewportRef.current(0);

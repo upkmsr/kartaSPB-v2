@@ -65,7 +65,10 @@ const mockHealthyApi = () =>
   });
 
 describe("App", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.localStorage.clear();
+  });
 
   it("renders the shell, 18 ordered districts, layers, and panel collapse", async () => {
     mockHealthyApi();
@@ -79,7 +82,7 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getAllByText("READY")).toHaveLength(2));
     await screen.findByRole("checkbox", { name: "Центральный" });
-    expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(28);
+    expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(29);
     const scrollArea = screen.getByRole("region", {
       name: "Прокручиваемые настройки карты",
     });
@@ -127,6 +130,29 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Все районы" }));
     expect(screen.getByText("Без ограничений")).toBeInTheDocument();
     expect(screen.getByTestId("map-districts")).toBeEmptyDOMElement();
+  });
+
+  it("resets only loading preferences and preserves district selection", async () => {
+    mockHealthyApi();
+    render(<App />);
+    await screen.findByRole("checkbox", { name: "Центральный" });
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Центральный" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Дороги/ }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Автоматически загружать объекты" }),
+    );
+    expect(screen.getByRole("checkbox", { name: /Дороги/ })).not.toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Автоматически загружать объекты" }),
+    ).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Сбросить настройки" }));
+    expect(screen.getByRole("checkbox", { name: /Дороги/ })).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Автоматически загружать объекты" }),
+    ).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Центральный" })).toBeChecked();
   });
 
   it("keeps the map available and retries a failed district request", async () => {

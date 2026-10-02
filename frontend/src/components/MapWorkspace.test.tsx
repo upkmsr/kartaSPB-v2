@@ -36,12 +36,15 @@ const WorkspaceHarness = ({
   return (
     <MapWorkspace
       visibleLayerIds={new Set()}
+      autoLoad
+      manualLoadSequence={0}
       districtIds={[]}
       navigationRequest={null}
       objectSelection={selection}
       onObjectSelect={(id) => setSelection({ id, origin: "map" })}
       onObjectClose={() => setSelection(null)}
       onZoomChange={vi.fn()}
+      onMapRequestStateChange={vi.fn()}
     />
   );
 };

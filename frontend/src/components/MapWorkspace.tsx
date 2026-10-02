@@ -10,12 +10,15 @@ import { ObjectCard } from "./ObjectCard";
 
 export type MapWorkspaceProps = {
   visibleLayerIds: ReadonlySet<string>;
+  autoLoad: boolean;
+  manualLoadSequence: number;
   districtIds: readonly string[];
   navigationRequest: MapNavigationRequest | null;
   objectSelection: { id: string; origin: "map" | "search" } | null;
   onObjectSelect: (objectId: string) => void;
   onObjectClose: () => void;
   onZoomChange: (zoom: number) => void;
+  onMapRequestStateChange: (state: MapRequestState) => void;
 };
 
 const RequestStatus = ({ state }: { state: MapRequestState }) => {
@@ -25,8 +28,12 @@ const RequestStatus = ({ state }: { state: MapRequestState }) => {
     loading: "Загружаем объекты…",
     ready: `${state.status === "ready" ? state.featureCount : 0} объектов`,
     empty: "В этом окне объектов нет",
+    "pending-manual-load": "Карта изменена — загрузите объекты",
+    "no-enabled-layers": "Включите хотя бы один слой",
+    "waiting-for-zoom": "Приблизьте карту до масштаба включённых слоёв",
     "bbox-too-large": "Приблизьте карту для загрузки объектов",
     "feature-limit": "Слишком много объектов — приблизьте карту или отключите слои",
+    "stale-error": state.status === "stale-error" ? state.message : "Показаны ранее загруженные данные",
     error: state.status === "error" ? state.message : "Ошибка загрузки",
   }[state.status];
 
@@ -43,12 +50,15 @@ const RequestStatus = ({ state }: { state: MapRequestState }) => {
 
 export function MapWorkspace({
   visibleLayerIds,
+  autoLoad,
+  manualLoadSequence,
   districtIds,
   navigationRequest,
   objectSelection,
   onObjectSelect,
   onObjectClose,
   onZoomChange,
+  onMapRequestStateChange,
 }: MapWorkspaceProps) {
   const [requestState, setRequestState] = useState<MapRequestState>({ status: "idle" });
   const [cardState, setCardState] = useState<ObjectCardState>({ status: "closed" });
@@ -88,6 +98,14 @@ export function MapWorkspace({
     onObjectClose();
   }, [onObjectClose]);
 
+  const handleRequestStateChange = useCallback(
+    (state: MapRequestState) => {
+      setRequestState(state);
+      onMapRequestStateChange(state);
+    },
+    [onMapRequestStateChange],
+  );
+
   const handleVisibleFeatureIds = useCallback((visibleIds: ReadonlySet<string>) => {
     if (
       objectSelection?.origin === "map" &&
@@ -101,12 +119,14 @@ export function MapWorkspace({
     <main className="map-workspace" aria-label="Рабочая область карты">
       <MapView
         visibleLayerIds={visibleLayerIds}
+        autoLoad={autoLoad}
+        manualLoadSequence={manualLoadSequence}
         districtIds={districtIds}
         navigationRequest={navigationRequest}
         selectedFeatureId={selectedObjectId}
         onFeatureSelect={onObjectSelect}
         onVisibleFeatureIdsChange={handleVisibleFeatureIds}
-        onRequestStateChange={setRequestState}
+        onRequestStateChange={handleRequestStateChange}
         onZoomChange={onZoomChange}
       />
       <RequestStatus state={requestState} />

@@ -4,6 +4,7 @@ import { LayerControl } from "./LayerControl";
 import { SearchSection } from "./SearchSection";
 import { StatusIndicator } from "./StatusIndicator";
 import type { SearchResult } from "../api/search";
+import type { MapRequestState } from "../map/mapTypes";
 
 type ConnectionState = "checking" | "ready" | "offline";
 
@@ -15,6 +16,8 @@ export type SidebarProps = {
   selectedDistrictIds: ReadonlySet<string>;
   districtIds: readonly string[];
   visibleLayerIds: ReadonlySet<string>;
+  autoLoad: boolean;
+  mapRequestState: MapRequestState;
   searchCategoryKeys: readonly string[];
   selectedSearchResultId: string | null;
   zoom: number;
@@ -25,6 +28,9 @@ export type SidebarProps = {
   onDistrictLocateSelected: () => void;
   onDistrictRetry: () => void;
   onLayerToggle: (layerId: string) => void;
+  onAutoLoadChange: (autoLoad: boolean) => void;
+  onLoadObjects: () => void;
+  onResetLoadingSettings: () => void;
   onSearchResultActivate: (result: SearchResult) => void;
 };
 
@@ -36,6 +42,8 @@ export function Sidebar({
   selectedDistrictIds,
   districtIds,
   visibleLayerIds,
+  autoLoad,
+  mapRequestState,
   searchCategoryKeys,
   selectedSearchResultId,
   zoom,
@@ -46,6 +54,9 @@ export function Sidebar({
   onDistrictLocateSelected,
   onDistrictRetry,
   onLayerToggle,
+  onAutoLoadChange,
+  onLoadObjects,
+  onResetLoadingSettings,
   onSearchResultActivate,
 }: SidebarProps) {
   return (
@@ -91,7 +102,12 @@ export function Sidebar({
           <LayerControl
             visibleLayerIds={visibleLayerIds}
             zoom={zoom}
+            autoLoad={autoLoad}
+            requestState={mapRequestState}
             onToggle={onLayerToggle}
+            onAutoLoadChange={onAutoLoadChange}
+            onLoadObjects={onLoadObjects}
+            onReset={onResetLoadingSettings}
           />
 
           <section className="system-status" aria-label="Состояние системы">

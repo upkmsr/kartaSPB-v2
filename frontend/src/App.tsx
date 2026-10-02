@@ -10,9 +10,18 @@ import type { SearchResult } from "./api/search";
 import type { DistrictLoadState } from "./components/DistrictSection";
 import { MapWorkspace } from "./components/MapWorkspace";
 import { Sidebar } from "./components/Sidebar";
-import { defaultVisibleLayerIds, enabledCategoryKeys } from "./map/layerRegistry";
+import { enabledCategoryKeys } from "./map/layerRegistry";
+import {
+  defaultMapLoadingSettings,
+  loadMapLoadingSettings,
+  saveMapLoadingSettings,
+} from "./map/mapLoadingSettings";
 import { searchResultNavigation } from "./map/searchNavigation";
-import type { MapNavigationRequest, MapNavigationTarget } from "./map/mapTypes";
+import type {
+  MapNavigationRequest,
+  MapNavigationTarget,
+  MapRequestState,
+} from "./map/mapTypes";
 
 type ConnectionState = "checking" | "ready" | "offline";
 const INITIAL_ZOOM = 12;
@@ -23,7 +32,9 @@ export function App() {
   const [backend, setBackend] = useState<ConnectionState>("checking");
   const [postgis, setPostgis] = useState<ConnectionState>("checking");
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
-  const [visibleLayerIds, setVisibleLayerIds] = useState(defaultVisibleLayerIds);
+  const [loadingSettings, setLoadingSettings] = useState(loadMapLoadingSettings);
+  const [mapRequestState, setMapRequestState] = useState<MapRequestState>({ status: "idle" });
+  const [manualLoadSequence, setManualLoadSequence] = useState(0);
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [districtState, setDistrictState] = useState<DistrictLoadState>({
     status: "loading",
@@ -34,6 +45,7 @@ export function App() {
   const [objectSelection, setObjectSelection] = useState<ObjectSelection | null>(null);
   const [selectedSearchResultId, setSelectedSearchResultId] = useState<string | null>(null);
   const navigationSequenceRef = useRef(0);
+  const visibleLayerIds = loadingSettings.visibleLayerIds;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -64,12 +76,14 @@ export function App() {
     return () => controller.abort();
   }, [districtRetry]);
 
+  useEffect(() => saveMapLoadingSettings(loadingSettings), [loadingSettings]);
+
   const toggleLayer = (layerId: string) => {
-    setVisibleLayerIds((current) => {
-      const next = new Set(current);
+    setLoadingSettings((current) => {
+      const next = new Set(current.visibleLayerIds);
       if (next.has(layerId)) next.delete(layerId);
       else next.add(layerId);
-      return next;
+      return { ...current, visibleLayerIds: next };
     });
   };
 
@@ -144,6 +158,8 @@ export function App() {
           selectedDistrictIds={selectedDistrictIds}
           districtIds={districtIds}
           visibleLayerIds={visibleLayerIds}
+          autoLoad={loadingSettings.autoLoad}
+          mapRequestState={mapRequestState}
           searchCategoryKeys={searchCategoryKeys}
           selectedSearchResultId={selectedSearchResultId}
           zoom={zoom}
@@ -154,11 +170,18 @@ export function App() {
           onDistrictLocateSelected={navigateToSelected}
           onDistrictRetry={() => setDistrictRetry((value) => value + 1)}
           onLayerToggle={toggleLayer}
+          onAutoLoadChange={(autoLoad) =>
+            setLoadingSettings((current) => ({ ...current, autoLoad }))
+          }
+          onLoadObjects={() => setManualLoadSequence((sequence) => sequence + 1)}
+          onResetLoadingSettings={() => setLoadingSettings(defaultMapLoadingSettings())}
           onSearchResultActivate={activateSearchResult}
         />
 
         <MapWorkspace
           visibleLayerIds={visibleLayerIds}
+          autoLoad={loadingSettings.autoLoad}
+          manualLoadSequence={manualLoadSequence}
           districtIds={districtIds}
           navigationRequest={navigationRequest}
           objectSelection={objectSelection}
@@ -171,6 +194,7 @@ export function App() {
             setObjectSelection(null);
           }}
           onZoomChange={setZoom}
+          onMapRequestStateChange={setMapRequestState}
         />
       </div>
 
