@@ -13,6 +13,50 @@ that PGDATA volume to the new image; the transfer is logical dump and restore on
 - enough disk exists for one fresh dump and the new native volume;
 - explicit production cutover authorisation has been recorded.
 
+## Mandatory Docker VM capacity preflight
+
+Host free space is not Docker VM free space. Measure the filesystem that contains
+Docker data before quiescing production. For the current Colima runtime:
+
+```bash
+colima ssh -- df -B1 /mnt/lima-colima
+colima ssh -- df -i /mnt/lima-colima
+docker system df -v
+```
+
+Inventory volumes, writable container layers, images, and their attachments before any
+cleanup. The old production volume, native cutover image, and host backup are protected.
+Use only targeted cleanup of artifacts whose ownership and reproducibility have been
+proved; never use a global volume prune.
+
+Derive the gate from a recent full native restore of the current backup:
+
+```text
+required available bytes before restore =
+  measured restored PGDATA
+  + restore/WAL/temp allowance
+  + required post-restore operational headroom
+```
+
+The old PGDATA is already part of VM used space and must remain present. The allowance
+must cover at least the backup copy and observed transient restore growth; use a larger
+allowance when peak usage was not measured. Operational headroom must support normal
+WAL, temporary queries, logs, and a future migration. Do not proceed merely because
+`initdb` fits.
+
+Arithmetic is not sufficient after an ENOSPC incident. Before authorising a retry,
+restore the exact accepted backup into a fresh disposable native volume, verify data and
+logs, record post-restore free bytes and volume size, then remove only that disposable
+environment. At cutover time, remeasure VM free space and stop if it has fallen below
+the proved pre-restore requirement.
+
+The 2026-10-02 remediation restored the current 316,203,335-byte backup into a fresh
+2.641 GB volume in 201 seconds. VM free space changed from 6,041,944,064 bytes after
+`initdb` and 5,725,728,768 bytes after the backup copy to 3,132,583,936 bytes after the
+full restore. PostgreSQL stayed healthy with zero restart, recovery, OOM, or ENOSPC
+markers. These measurements are evidence for this backup only; repeat the calculation
+when the backup or dataset changes.
+
 ## Accepted native rehearsal
 
 On 2026-10-02 the arm64 image ran PostgreSQL 17.5 and PostGIS 3.6.4. A verified
