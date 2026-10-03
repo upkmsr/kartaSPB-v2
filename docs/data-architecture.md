@@ -11,10 +11,18 @@ The long-term PostGIS layout is divided into schemas with explicit responsibilit
 | `domain` | Specialised application models derived from canonical objects |
 | `user` | User-owned places, preferences, and saved analyses |
 | `analytics` | Grids, computed features, and scoring outputs |
+| `upi` | Immutable official-source evidence snapshots, source-faithful normalized features, source profiles, and health observations |
 
 FOUNDATION 1 uses `meta` and `staging`. FOUNDATION 2 adds `derived`; FOUNDATION
 3A adds the canonical `catalog` core; 3B adds catalog category assignments and
 their source/rule provenance. The domain schema remains empty.
+
+UPI-A adds `upi` as a separate evidence boundary. It reuses global source identity in
+`meta.dataset_sources` and run lifecycle in `meta.import_runs`; it does not feed
+`catalog`, categories or domain models. `upi.source_snapshots`,
+`upi.normalized_features`, and `upi.source_health` are append-only. The complete
+contract, transactional failure behavior and retention gate are documented in
+[upi-source-foundation.md](upi-source-foundation.md).
 
 ## Source registry
 
@@ -103,7 +111,9 @@ Alembic is the sole production schema-management mechanism. Revision
 `20260922_0002` creates OSM staging; revision `20260923_0003` creates the
 derived relation-geometry layer; revision `20260924_0004` creates the canonical
 GIS core; revision `20260924_0005` creates category persistence. Runtime
-application code never calls `create_all()`.
+application code never calls `create_all()`. Revision `20261003_0011` adds only the
+separate UPI source-evidence schema; applying it to production requires its own explicit
+rollout authorization.
 # Category Engine (FOUNDATION 3B)
 
 The canonical catalog remains provider-independent. Category definitions live in

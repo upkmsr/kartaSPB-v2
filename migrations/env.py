@@ -13,6 +13,10 @@ from app.db.models import (  # noqa: F401
     ImportRun,
     ObjectSource,
     OsmRelationGeometry,
+    UpiNormalizedFeature,
+    UpiSourceHealth,
+    UpiSourceProfile,
+    UpiSourceSnapshot,
 )
 
 config = context.config
@@ -30,6 +34,7 @@ MANAGED_SCHEMAS = {
     "domain",
     "user",
     "analytics",
+    "upi",
 }
 
 

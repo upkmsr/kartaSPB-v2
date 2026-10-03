@@ -1,0 +1,108 @@
+{
+  "metadata": {
+    "name": "Объекты жилищного строительства (контур)",
+    "type": "Feature Layer",
+    "geometryType": "esriGeometryPolygon",
+    "extent": {
+      "xmin": 3285446.17,
+      "ymin": 8329537.85,
+      "xmax": 3410941.91,
+      "ymax": 8446401.94,
+      "spatialReference": {"wkid": 102100, "latestWkid": 3857}
+    },
+    "maxRecordCount": 10000,
+    "advancedQueryCapabilities": {
+      "supportsOrderBy": true,
+      "supportsPagination": false
+    },
+    "fields": [
+      {"name": "OBJECTID", "type": "esriFieldTypeOID", "nullable": null},
+      {"name": "GUID", "type": "esriFieldTypeString", "nullable": null},
+      {"name": "ROOTID", "type": "esriFieldTypeInteger", "nullable": null},
+      {"name": "ADDRESSSTROYOBJECT", "type": "esriFieldTypeString", "nullable": null},
+      {"name": "NAZVANIEOBJECT", "type": "esriFieldTypeString", "nullable": null},
+      {"name": "STATUSOBJECT", "type": "esriFieldTypeString", "nullable": null},
+      {"name": "DATECREATE", "type": "esriFieldTypeString", "nullable": null},
+      {"name": "KADASTRNUMBER", "type": "esriFieldTypeString", "nullable": null},
+      {"name": "NAZNACHENIEOBJECT", "type": "esriFieldTypeString", "nullable": null},
+      {"name": "IGNORED_OPTIONAL_FIELD", "type": "esriFieldTypeString", "nullable": null}
+    ]
+  },
+  "features": [
+    {
+      "attributes": {
+        "OBJECTID": 30,
+        "GUID": "33333333-3333-4333-8333-333333333333",
+        "ROOTID": 1030,
+        "ADDRESSSTROYOBJECT": "Санкт-Петербург, тестовый адрес 30",
+        "NAZVANIEOBJECT": "Тестовый жилой объект 30",
+        "STATUSOBJECT": "Строительство",
+        "DATECREATE": "2026-09-30T12:00:00",
+        "KADASTRNUMBER": "78:00:0000030:1",
+        "NAZNACHENIEOBJECT": "Жилой дом",
+        "UNAPPROVED_RAW_FIELD": "must not persist"
+      },
+      "geometry": {
+        "rings": [
+          [[30.30, 59.90], [30.31, 59.90], [30.31, 59.91], [30.30, 59.91], [30.30, 59.90]]
+        ]
+      }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 10,
+        "GUID": "11111111-1111-4111-8111-111111111111",
+        "ROOTID": 1010,
+        "ADDRESSSTROYOBJECT": "Санкт-Петербург, тестовый адрес 10",
+        "NAZVANIEOBJECT": "Тестовый жилой объект 10",
+        "STATUSOBJECT": "Служба",
+        "DATECREATE": "2026-09-10T12:00:00",
+        "KADASTRNUMBER": "78:00:0000010:1",
+        "NAZNACHENIEOBJECT": null
+      },
+      "geometry": {
+        "rings": [
+          [[30.10, 59.90], [30.14, 59.90], [30.14, 59.94], [30.10, 59.94], [30.10, 59.90]],
+          [[30.11, 59.91], [30.11, 59.92], [30.12, 59.92], [30.12, 59.91], [30.11, 59.91]]
+        ]
+      }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 40,
+        "GUID": "44444444-4444-4444-8444-444444444444",
+        "ROOTID": 1040,
+        "ADDRESSSTROYOBJECT": "Санкт-Петербург, тестовый адрес 40",
+        "NAZVANIEOBJECT": "Тестовый жилой объект 40",
+        "STATUSOBJECT": "Проект",
+        "DATECREATE": "2026-10-01T12:00:00",
+        "KADASTRNUMBER": null,
+        "NAZNACHENIEOBJECT": "Комплекс"
+      },
+      "geometry": {
+        "rings": [
+          [[30.40, 59.90], [30.41, 59.90], [30.41, 59.91], [30.40, 59.91], [30.40, 59.90]],
+          [[30.42, 59.92], [30.43, 59.92], [30.43, 59.93], [30.42, 59.93], [30.42, 59.92]]
+        ]
+      }
+    },
+    {
+      "attributes": {
+        "OBJECTID": 20,
+        "GUID": "22222222-2222-4222-8222-222222222222",
+        "ROOTID": 1020,
+        "ADDRESSSTROYOBJECT": "Санкт-Петербург, тестовый адрес 20",
+        "NAZVANIEOBJECT": "Тестовый жилой объект 20",
+        "STATUSOBJECT": "Строительство",
+        "DATECREATE": "2026-09-20T12:00:00",
+        "KADASTRNUMBER": "78:00:0000020:1",
+        "NAZNACHENIEOBJECT": "Жилой дом"
+      },
+      "geometry": {
+        "rings": [
+          [[30.20, 59.90], [30.21, 59.90], [30.21, 59.91], [30.20, 59.91], [30.20, 59.90]]
+        ]
+      }
+    }
+  ]
+}

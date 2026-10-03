@@ -12,6 +12,10 @@ from app.db.models import (
     OsmRelationGeometry,
     StreetEntity,
     StreetEntityMember,
+    UpiNormalizedFeature,
+    UpiSourceHealth,
+    UpiSourceProfile,
+    UpiSourceSnapshot,
 )
 
 
@@ -142,4 +146,30 @@ def test_logical_street_models_reference_canonical_road_members() -> None:
     assert {column.name for column in StreetEntityMember.__table__.primary_key.columns} == {
         "street_entity_id",
         "canonical_object_id",
+    }
+
+
+def test_upi_models_are_separate_from_catalog_and_keep_evidence_contract() -> None:
+    assert UpiSourceProfile.__table__.schema == "upi"
+    assert UpiSourceSnapshot.__table__.schema == "upi"
+    assert UpiNormalizedFeature.__table__.schema == "upi"
+    assert UpiSourceHealth.__table__.schema == "upi"
+    assert {column.name for column in UpiNormalizedFeature.__table__.columns} >= {
+        "source_id",
+        "snapshot_id",
+        "source_object_id",
+        "normalization_version",
+        "properties",
+        "payload_hash",
+        "geom",
+    }
+    assert {column.name for column in UpiSourceSnapshot.__table__.columns} >= {
+        "import_run_id",
+        "retrieved_at",
+        "config_version",
+        "schema_fingerprint",
+        "payload_checksum",
+        "source_crs",
+        "raw_payload",
+        "raw_evidence_locator",
     }

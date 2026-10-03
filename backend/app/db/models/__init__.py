@@ -23,6 +23,12 @@ from app.db.models.osm import (
     OsmWay,
 )
 from app.db.models.source import DatasetSource
+from app.db.models.upi import (
+    UpiNormalizedFeature,
+    UpiSourceHealth,
+    UpiSourceProfile,
+    UpiSourceSnapshot,
+)
 
 __all__ = [
     "DatasetSource",
@@ -45,4 +51,8 @@ __all__ = [
     "ObjectSource",
     "ObjectCategory",
     "ObjectCategorySource",
+    "UpiNormalizedFeature",
+    "UpiSourceHealth",
+    "UpiSourceProfile",
+    "UpiSourceSnapshot",
 ]

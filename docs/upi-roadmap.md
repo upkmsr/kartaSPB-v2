@@ -1,15 +1,16 @@
 # UPI implementation roadmap proposal
 
-UPI-1 is discovery only. The sequence below groups the capability matrix into seven
-coherent stages; it is not authorization to start UPI-A.
+UPI-1 discovery is complete. The project owner selected UPI as the active roadmap block;
+the sequence below groups the capability matrix into seven coherent stages. It is not
+authorization to start any stage beyond the explicitly accepted UPI-A slice.
 
 ## Roadmap decision gate
 
-**F6 contract not present in repository at UPI-1 closeout.**
+**F6 contract is not present in the repository. UPI is the active block; F6 remains
+unstarted and deferred until its authoritative contract is supplied and reconciled.**
 
-Before UPI-A or UPI-B begins, the project owner must choose whether UPI is the next main
-roadmap block, supply and reconcile the original F6 contract, or explicitly interleave
-the two. UPI-1 does not decide that ordering and does not claim that UPI replaces F6.
+This decision does not delete or replace F6. UPI-B is not authorized by completion of
+UPI-A.
 
 ## Proposed domain model
 
@@ -63,6 +64,11 @@ Rules:
 ## Implementation stages
 
 ### UPI-A — source foundation and evidence safety
+
+**Implementation/rehearsal status: complete on 2026-10-03; production rollout not
+applied or authorized.** The accepted vertical slice is the TORIS construction polygon
+layer with a bounded live probe and complete deterministic-fixture rehearsal. See
+[upi-source-foundation.md](upi-source-foundation.md).
 
 - Included work packages: source registry, immutable raw snapshots, normalized snapshot
   envelope, provenance, source health, schema contracts, licensing/access gates,
