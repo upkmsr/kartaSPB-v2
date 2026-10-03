@@ -1,5 +1,7 @@
 import { layerRegistry } from "../map/layerRegistry";
 import type { MapRequestState } from "../map/mapTypes";
+import type { CSSProperties } from "react";
+import type { LegendDefinition } from "../map/layerContract";
 
 export type LayerControlProps = {
   visibleLayerIds: ReadonlySet<string>;
@@ -31,6 +33,17 @@ const layerStatus = (
   }
   if (requestState.status === "pending-manual-load") return "ожидает";
   return "готов";
+};
+
+const legendStyle = (legend: LegendDefinition): CSSProperties => {
+  if (legend.kind === "raster-gradient") {
+    return { background: `linear-gradient(90deg, ${legend.colors.join(", ")})` };
+  }
+  return {
+    backgroundColor: legend.color,
+    borderColor:
+      legend.kind === "point" || legend.kind === "fill" ? legend.outlineColor : undefined,
+  };
 };
 
 export function LayerControl({
@@ -90,7 +103,11 @@ export function LayerControl({
                 checked={enabled}
                 onChange={() => onToggle(layer.id)}
               />
-              <span className={`layer-swatch layer-swatch--${layer.id}`} aria-hidden="true" />
+              <span
+                className={`layer-swatch layer-swatch--${layer.legend.kind}`}
+                style={legendStyle(layer.legend)}
+                aria-hidden="true"
+              />
               <span>{layer.label}</span>
               <small>{belowMinZoom ? `с z${layer.minZoom}` : status}</small>
             </label>

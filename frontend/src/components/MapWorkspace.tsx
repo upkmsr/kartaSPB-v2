@@ -7,6 +7,7 @@ import type {
   ObjectCardState,
 } from "../map/mapTypes";
 import { ObjectCard } from "./ObjectCard";
+import type { MapSelection } from "../map/layerContract";
 
 export type MapWorkspaceProps = {
   visibleLayerIds: ReadonlySet<string>;
@@ -115,6 +116,14 @@ export function MapWorkspace({
     }
   }, [objectSelection, onObjectClose]);
 
+  const handleMapSelection = useCallback(
+    (selection: MapSelection) => {
+      if (selection.kind === "canonical-object") onObjectSelect(selection.objectId);
+      // A future layer-feature card will subscribe here without entering ObjectDetail.
+    },
+    [onObjectSelect],
+  );
+
   return (
     <main className="map-workspace" aria-label="Рабочая область карты">
       <MapView
@@ -124,7 +133,7 @@ export function MapWorkspace({
         districtIds={districtIds}
         navigationRequest={navigationRequest}
         selectedFeatureId={selectedObjectId}
-        onFeatureSelect={onObjectSelect}
+        onSelection={handleMapSelection}
         onVisibleFeatureIdsChange={handleVisibleFeatureIds}
         onRequestStateChange={handleRequestStateChange}
         onZoomChange={onZoomChange}

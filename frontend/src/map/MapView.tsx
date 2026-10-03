@@ -2,9 +2,6 @@ import { useEffect, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type {
-  ExpressionSpecification,
-  FilterSpecification,
-  GeoJSONSource,
   Map as MapLibreMap,
   StyleSpecification,
 } from "maplibre-gl";
@@ -14,13 +11,20 @@ import {
   type DistrictGeometryFeatureCollection,
 } from "../api/districts";
 import {
-  activeCategoryKeys,
-  categoryFilter,
-  geometryFilter,
+  interactionIndex,
   interactiveRenderLayerIds,
   layerRegistry,
   orderedRenderDefinitions,
 } from "./layerRegistry";
+import type { MapSelection } from "./layerContract";
+import { resolveMapSelection } from "./layerRegistryHelpers";
+import {
+  CATALOG_SOURCE_ID,
+  planCatalogViewport,
+  setCatalogSourceData,
+  updateCatalogSelection,
+} from "./catalogLayerDriver";
+import { installRegisteredLayers, setRegisteredLayerVisibility } from "./layerRuntime";
 import { alignOpenFreeMapRoadArrows } from "./basemapStyle";
 import {
   installSelectedDistrictOverlay,
@@ -34,7 +38,6 @@ import {
   type MapRequestState,
 } from "./mapTypes";
 
-const SOURCE_ID = "catalog-features";
 const INITIAL_CENTER: [number, number] = [30.3158, 59.9398];
 const INITIAL_ZOOM = 12;
 const VIEWPORT_DEBOUNCE_MS = 200;
@@ -69,99 +72,10 @@ export type MapViewProps = {
   districtIds: readonly string[];
   navigationRequest: MapNavigationRequest | null;
   selectedFeatureId: string | null;
-  onFeatureSelect: (objectId: string) => void;
+  onSelection: (selection: MapSelection) => void;
   onVisibleFeatureIdsChange: (visibleIds: ReadonlySet<string>) => void;
   onRequestStateChange: (state: MapRequestState) => void;
   onZoomChange: (zoom: number) => void;
-};
-
-const selectedMembershipFilter = (selectedId: string | null): ExpressionSpecification => [
-  "any",
-  ["==", ["get", "canonical_id"], selectedId ?? ""],
-  ["in", selectedId ?? "", ["get", "member_canonical_ids"]],
-];
-
-const selectedFilter = (
-  geometry: "point" | "line" | "polygon",
-  selectedId: string | null,
-): FilterSpecification => [
-  "all",
-  geometryFilter(geometry),
-  selectedMembershipFilter(selectedId),
-];
-
-const installCatalogLayers = (
-  map: MapLibreMap,
-  data: CatalogFeatureCollection,
-  visibleLayerIds: ReadonlySet<string>,
-  selectedId: string | null,
-): void => {
-  if (!map.getSource(SOURCE_ID)) {
-    map.addSource(SOURCE_ID, { type: "geojson", data });
-  }
-
-  for (const { logicalLayer, definition } of orderedRenderDefinitions) {
-    if (map.getLayer(definition.id)) continue;
-    const visibility = visibleLayerIds.has(logicalLayer.id) ? "visible" : "none";
-    const common = {
-      id: definition.id,
-      source: SOURCE_ID,
-      minzoom: logicalLayer.minZoom,
-      filter: categoryFilter(logicalLayer.categoryKey, definition.geometry),
-      layout: { visibility } as const,
-    };
-    if (definition.type === "circle") {
-      map.addLayer({ ...common, type: "circle", paint: definition.paint });
-    } else if (definition.type === "fill") {
-      map.addLayer({ ...common, type: "fill", paint: definition.paint });
-    } else {
-      map.addLayer({ ...common, type: "line", paint: definition.paint });
-    }
-  }
-
-  if (!map.getLayer("selection-fill")) {
-    map.addLayer({
-      id: "selection-fill",
-      source: SOURCE_ID,
-      type: "fill",
-      filter: selectedFilter("polygon", selectedId),
-      paint: { "fill-color": "#bbff3c", "fill-opacity": 0.42 },
-    });
-    map.addLayer({
-      id: "selection-line",
-      source: SOURCE_ID,
-      type: "line",
-      filter: [
-        "all",
-        ["any", geometryFilter("line"), geometryFilter("polygon")],
-        selectedMembershipFilter(selectedId),
-      ],
-      paint: { "line-color": "#bbff3c", "line-width": 4, "line-opacity": 1 },
-    });
-    map.addLayer({
-      id: "selection-point",
-      source: SOURCE_ID,
-      type: "circle",
-      filter: selectedFilter("point", selectedId),
-      paint: {
-        "circle-color": "#bbff3c",
-        "circle-radius": 10,
-        "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 2,
-      },
-    });
-  }
-};
-
-const updateSelectionFilters = (map: MapLibreMap, selectedId: string | null): void => {
-  if (!map.getLayer("selection-fill")) return;
-  map.setFilter("selection-fill", selectedFilter("polygon", selectedId));
-  map.setFilter("selection-line", [
-    "all",
-    ["any", geometryFilter("line"), geometryFilter("polygon")],
-    selectedMembershipFilter(selectedId),
-  ]);
-  map.setFilter("selection-point", selectedFilter("point", selectedId));
 };
 
 export function MapView({
@@ -171,7 +85,7 @@ export function MapView({
   districtIds,
   navigationRequest,
   selectedFeatureId,
-  onFeatureSelect,
+  onSelection,
   onVisibleFeatureIdsChange,
   onRequestStateChange,
   onZoomChange,
@@ -182,7 +96,7 @@ export function MapView({
   const autoLoadRef = useRef(autoLoad);
   const districtIdsRef = useRef(districtIds);
   const selectedFeatureIdRef = useRef(selectedFeatureId);
-  const onFeatureSelectRef = useRef(onFeatureSelect);
+  const onSelectionRef = useRef<(selection: MapSelection) => void>(() => undefined);
   const onVisibleFeatureIdsChangeRef = useRef(onVisibleFeatureIdsChange);
   const onRequestStateChangeRef = useRef(onRequestStateChange);
   const onZoomChangeRef = useRef(onZoomChange);
@@ -204,7 +118,7 @@ export function MapView({
   autoLoadRef.current = autoLoad;
   districtIdsRef.current = districtIds;
   selectedFeatureIdRef.current = selectedFeatureId;
-  onFeatureSelectRef.current = onFeatureSelect;
+  onSelectionRef.current = onSelection;
   onVisibleFeatureIdsChangeRef.current = onVisibleFeatureIdsChange;
   onRequestStateChangeRef.current = onRequestStateChange;
   onZoomChangeRef.current = onZoomChange;
@@ -241,18 +155,13 @@ export function MapView({
     resizeObserver?.observe(containerRef.current);
     resizeMap();
 
-    const setSourceData = (collection: CatalogFeatureCollection): void => {
-      const source = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
-      if (source) source.setData(collection as Parameters<GeoJSONSource["setData"]>[0]);
-    };
-
     const clearCatalog = (state: MapRequestState): void => {
       requestRef.current.cancel();
       inFlightSignatureRef.current = null;
       successfulSignatureRef.current = null;
       latestSuccessfulStateRef.current = null;
       latestDataRef.current = EMPTY_FEATURE_COLLECTION;
-      setSourceData(EMPTY_FEATURE_COLLECTION);
+      setCatalogSourceData(map, EMPTY_FEATURE_COLLECTION);
       onVisibleFeatureIdsChangeRef.current(new Set());
       onRequestStateChangeRef.current(state);
     };
@@ -266,23 +175,19 @@ export function MapView({
     const loadViewport = (delay = VIEWPORT_DEBOUNCE_MS, force = false): void => {
       if (debounceTimerRef.current !== null) window.clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = window.setTimeout(() => {
-        if (!map.getSource(SOURCE_ID)) return;
-        const enabledLayers = layerRegistry.filter((layer) =>
-          visibleLayerIdsRef.current.has(layer.id),
-        );
-        if (enabledLayers.length === 0) {
+        if (!map.getSource(CATALOG_SOURCE_ID)) return;
+        const zoom = map.getZoom();
+        const catalogPlan = planCatalogViewport(layerRegistry, visibleLayerIdsRef.current, zoom);
+        if (catalogPlan.enabledLayerIds.length === 0) {
           clearCatalog({ status: "no-enabled-layers" });
           return;
         }
 
-        const zoom = map.getZoom();
-        const loadableLayerIds = enabledLayers
-          .filter((layer) => zoom >= layer.minZoom)
-          .map((layer) => layer.id);
+        const loadableLayerIds = catalogPlan.loadableLayerIds;
         if (loadableLayerIds.length === 0) {
           clearCatalog({
             status: "waiting-for-zoom",
-            waitingLayerIds: enabledLayers.map((layer) => layer.id),
+            waitingLayerIds: catalogPlan.enabledLayerIds,
           });
           return;
         }
@@ -300,7 +205,7 @@ export function MapView({
           return;
         }
 
-        const categories = activeCategoryKeys(visibleLayerIdsRef.current, map.getZoom());
+        const categories = catalogPlan.categoryKeys;
         const signature = JSON.stringify({
           bbox: bboxGuard.bbox,
           categories: [...categories].sort(),
@@ -334,7 +239,7 @@ export function MapView({
             inFlightSignatureRef.current = null;
             successfulSignatureRef.current = signature;
             latestDataRef.current = collection;
-            setSourceData(collection);
+            setCatalogSourceData(map, collection);
             onVisibleFeatureIdsChangeRef.current(
               new Set(
                 collection.features.flatMap(
@@ -384,11 +289,14 @@ export function MapView({
 
     const installOverlay = (): void => {
       if (primaryStyleUrl === DEFAULT_STYLE_URL) alignOpenFreeMapRoadArrows(map);
-      installCatalogLayers(
+      installRegisteredLayers(
         map,
-        latestDataRef.current,
+        layerRegistry,
         visibleLayerIdsRef.current,
-        selectedFeatureIdRef.current,
+        {
+          catalogData: latestDataRef.current,
+          selectedCanonicalId: selectedFeatureIdRef.current,
+        },
       );
       installSelectedDistrictOverlay(
         map,
@@ -427,11 +335,9 @@ export function MapView({
       const layers = interactiveRenderLayerIds.filter((id) => map.getLayer(id));
       if (layers.length === 0) return;
       const feature = map.queryRenderedFeatures(event.point, { layers })[0];
-      const canonicalId =
-        feature?.properties?.representative_canonical_id ?? feature?.properties?.canonical_id;
-      if (typeof canonicalId === "string") {
-        onFeatureSelectRef.current(canonicalId);
-      }
+      if (!feature) return;
+      const selection = resolveMapSelection(feature.layer?.id ?? layers[0], feature, interactionIndex);
+      if (selection) onSelectionRef.current(selection);
     });
 
     const request = requestRef.current;
@@ -449,15 +355,8 @@ export function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.getSource(SOURCE_ID)) return;
-    for (const logicalLayer of layerRegistry) {
-      const visibility = visibleLayerIds.has(logicalLayer.id) ? "visible" : "none";
-      for (const definition of logicalLayer.renderDefinitions) {
-        if (map.getLayer(definition.id)) {
-          map.setLayoutProperty(definition.id, "visibility", visibility);
-        }
-      }
-    }
+    if (!map || !map.getSource(CATALOG_SOURCE_ID)) return;
+    setRegisteredLayerVisibility(map, layerRegistry, visibleLayerIds);
     loadViewportRef.current(0);
   }, [visibleLayerIds]);
 
@@ -515,7 +414,7 @@ export function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (map) updateSelectionFilters(map, selectedFeatureId);
+    if (map) updateCatalogSelection(map, selectedFeatureId);
   }, [selectedFeatureId]);
 
   return <div ref={containerRef} className="catalog-map" aria-label="Карта Санкт-Петербурга" />;

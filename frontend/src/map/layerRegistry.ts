@@ -1,7 +1,55 @@
-import type { ExpressionSpecification } from "maplibre-gl";
-import type { LogicalLayer, RenderGeometry } from "./mapTypes";
+import type { LayerDefinition, LayerGroup, LegendDefinition } from "./layerContract";
+import {
+  assertValidLayerRegistry,
+  buildInteractionIndex,
+  catalogCategoryKeys,
+  catalogFeatureFilter,
+  defaultLayerIds,
+  geometryFilter,
+  orderedRenderDefinitionsFor,
+  s6ViewportLayers,
+} from "./layerRegistryHelpers";
 
-const institutionRender = (id: string, color: string): LogicalLayer["renderDefinitions"] => [
+export const layerGroups: readonly LayerGroup[] = [
+  { id: "city-objects", label: "Городские объекты", order: 10 },
+] as const;
+
+type CatalogLayerConfig = Pick<
+  LayerDefinition,
+  "id" | "label" | "defaultVisible" | "minZoom" | "renderDefinitions"
+> & {
+  categoryKey: string;
+  legend: LegendDefinition;
+};
+
+const catalogLayer = ({ categoryKey, ...definition }: CatalogLayerConfig): LayerDefinition => ({
+  ...definition,
+  groupId: "city-objects",
+  layerClass: "canonical-object",
+  source: {
+    type: "catalog",
+    sourceId: "catalog-features",
+    endpoint: "/api/map/features",
+    categoryKey,
+    loadParticipation: "s6-viewport",
+    districtHandling: "catalog-filter",
+  },
+  selection: { kind: "canonical-object" },
+  loadingStrategy: "viewport",
+  time: { kind: "none" },
+  opacity: { default: 1, adjustable: false, applyTo: [] },
+  provenance: {
+    kind: "community",
+    sourceLabel: "OpenStreetMap",
+    attribution: "© OpenStreetMap contributors",
+    sourceUrl: "https://www.openstreetmap.org/copyright",
+  },
+});
+
+const institutionRender = (
+  id: string,
+  color: string,
+): LayerDefinition["renderDefinitions"] => [
   {
     id: `${id}-fill`,
     order: 30,
@@ -30,14 +78,14 @@ const institutionRender = (id: string, color: string): LogicalLayer["renderDefin
   },
 ];
 
-export const layerRegistry: readonly LogicalLayer[] = [
-  {
+export const layerRegistry: readonly LayerDefinition[] = [
+  catalogLayer({
     id: "water",
     categoryKey: "nature.water",
     label: "Вода",
     defaultVisible: true,
     minZoom: 9,
-    interactive: true,
+    legend: { kind: "fill", color: "#65ace0", outlineColor: "#65ace0" },
     renderDefinitions: [
       {
         id: "water-fill",
@@ -65,14 +113,14 @@ export const layerRegistry: readonly LogicalLayer[] = [
         },
       },
     ],
-  },
-  {
+  }),
+  catalogLayer({
     id: "park",
     categoryKey: "nature.park",
     label: "Парки",
     defaultVisible: true,
     minZoom: 10,
-    interactive: true,
+    legend: { kind: "fill", color: "#83c77a", outlineColor: "#83c77a" },
     renderDefinitions: [
       {
         id: "park-fill",
@@ -89,59 +137,59 @@ export const layerRegistry: readonly LogicalLayer[] = [
         paint: { "line-color": "#83c77a", "line-width": 1, "line-opacity": 0.75 },
       },
     ],
-  },
-  {
+  }),
+  catalogLayer({
     id: "school",
     categoryKey: "education.school",
     label: "Школы",
     defaultVisible: true,
     minZoom: 13,
-    interactive: true,
+    legend: { kind: "point", color: "#e5cf59" },
     renderDefinitions: institutionRender("school", "#e5cf59"),
-  },
-  {
+  }),
+  catalogLayer({
     id: "kindergarten",
     categoryKey: "education.kindergarten",
     label: "Детские сады",
     defaultVisible: true,
     minZoom: 13,
-    interactive: true,
+    legend: { kind: "point", color: "#f09b55" },
     renderDefinitions: institutionRender("kindergarten", "#f09b55"),
-  },
-  {
+  }),
+  catalogLayer({
     id: "pharmacy",
     categoryKey: "healthcare.pharmacy",
     label: "Аптеки",
     defaultVisible: true,
     minZoom: 14,
-    interactive: true,
+    legend: { kind: "point", color: "#ee77b7" },
     renderDefinitions: institutionRender("pharmacy", "#ee77b7"),
-  },
-  {
+  }),
+  catalogLayer({
     id: "hospital",
     categoryKey: "healthcare.hospital",
     label: "Больницы",
     defaultVisible: true,
     minZoom: 12,
-    interactive: true,
+    legend: { kind: "point", color: "#ff6f62" },
     renderDefinitions: institutionRender("hospital", "#ff6f62"),
-  },
-  {
+  }),
+  catalogLayer({
     id: "clinic",
     categoryKey: "healthcare.clinic",
     label: "Клиники",
     defaultVisible: true,
     minZoom: 13,
-    interactive: true,
+    legend: { kind: "point", color: "#5fd2c8" },
     renderDefinitions: institutionRender("clinic", "#5fd2c8"),
-  },
-  {
+  }),
+  catalogLayer({
     id: "road",
     categoryKey: "transport.road",
     label: "Дороги",
     defaultVisible: true,
     minZoom: 16,
-    interactive: true,
+    legend: { kind: "line", color: "#ffb347" },
     renderDefinitions: [
       {
         id: "road-line",
@@ -155,14 +203,14 @@ export const layerRegistry: readonly LogicalLayer[] = [
         },
       },
     ],
-  },
-  {
+  }),
+  catalogLayer({
     id: "boundary",
     categoryKey: "boundary.administrative",
     label: "Адм. границы",
     defaultVisible: false,
     minZoom: 10,
-    interactive: true,
+    legend: { kind: "line", color: "#be8cff", dashed: true },
     renderDefinitions: [
       {
         id: "boundary-line",
@@ -177,14 +225,14 @@ export const layerRegistry: readonly LogicalLayer[] = [
         },
       },
     ],
-  },
-  {
+  }),
+  catalogLayer({
     id: "stop",
     categoryKey: "transport.stop",
     label: "Остановки",
     defaultVisible: true,
     minZoom: 14,
-    interactive: true,
+    legend: { kind: "point", color: "#65ace0", outlineColor: "#dff0ff" },
     renderDefinitions: [
       {
         id: "stop-point",
@@ -199,54 +247,30 @@ export const layerRegistry: readonly LogicalLayer[] = [
         },
       },
     ],
-  },
+  }),
 ] as const;
 
-export const defaultVisibleLayerIds = (): Set<string> =>
-  new Set(layerRegistry.filter((layer) => layer.defaultVisible).map((layer) => layer.id));
+assertValidLayerRegistry(layerRegistry, layerGroups);
+
+export const defaultVisibleLayerIds = (): Set<string> => defaultLayerIds(layerRegistry);
 
 export const activeCategoryKeys = (visibleLayerIds: ReadonlySet<string>, zoom: number): string[] =>
-  Array.from(
-    new Set(
-      layerRegistry
-        .filter((layer) => visibleLayerIds.has(layer.id) && zoom >= layer.minZoom)
-        .map((layer) => layer.categoryKey),
-    ),
-  );
+  catalogCategoryKeys(s6ViewportLayers(layerRegistry), visibleLayerIds, zoom);
 
 export const enabledCategoryKeys = (visibleLayerIds: ReadonlySet<string>): string[] =>
-  layerRegistry
-    .filter((layer) => visibleLayerIds.has(layer.id))
-    .map((layer) => layer.categoryKey);
+  catalogCategoryKeys(layerRegistry, visibleLayerIds);
 
 export const renderLayerIds = layerRegistry.flatMap((layer) =>
   layer.renderDefinitions.map((definition) => definition.id),
 );
 
-export const orderedRenderDefinitions = layerRegistry
-  .flatMap((logicalLayer) =>
-    logicalLayer.renderDefinitions.map((definition) => ({ logicalLayer, definition })),
-  )
-  .sort((left, right) => left.definition.order - right.definition.order);
+export const orderedRenderDefinitions = orderedRenderDefinitionsFor(layerRegistry);
+export const interactionIndex = buildInteractionIndex(layerRegistry);
+export const interactiveRenderLayerIds = [...interactionIndex.keys()];
 
-export const interactiveRenderLayerIds = layerRegistry
-  .filter((layer) => layer.interactive)
-  .flatMap((layer) => layer.renderDefinitions.map((definition) => definition.id));
-
-export const geometryFilter = (geometry: RenderGeometry): ExpressionSpecification => [
-  "==",
-  ["geometry-type"],
-  geometry === "point" ? "Point" : geometry === "line" ? "LineString" : "Polygon",
-];
-
-export const categoryFilter = (
-  categoryKey: string,
-  geometry: RenderGeometry,
-): ExpressionSpecification => [
-  "all",
-  ["in", categoryKey, ["get", "categories"]],
-  geometryFilter(geometry),
-];
+export { catalogFeatureFilter as categoryFilter, geometryFilter };
 
 export const categoryLabel = (categoryKey: string): string =>
-  layerRegistry.find((layer) => layer.categoryKey === categoryKey)?.label ?? categoryKey;
+  layerRegistry.find(
+    (layer) => layer.source.type === "catalog" && layer.source.categoryKey === categoryKey,
+  )?.label ?? categoryKey;

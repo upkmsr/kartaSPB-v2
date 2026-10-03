@@ -739,15 +739,20 @@ label:focus-visible {
   background: #8f9da3;
 }
 
-.layer-swatch--water,
-.layer-swatch--stop { background: #65ace0; }
-.layer-swatch--park { background: #83c77a; }
-.layer-swatch--school { background: #e5cf59; }
-.layer-swatch--kindergarten { background: #f09b55; }
-.layer-swatch--pharmacy { background: #ee77b7; }
-.layer-swatch--hospital { background: #ff6f62; }
-.layer-swatch--clinic { background: #5fd2c8; }
-.layer-swatch--boundary { background: #be8cff; }
+.layer-swatch--point,
+.layer-swatch--fill {
+  border: 1px solid transparent;
+}
+
+.layer-swatch--line {
+  height: 3px;
+  border-radius: 1px;
+}
+
+.layer-swatch--raster-gradient {
+  width: 9px;
+  border-radius: 1px;
+}
 
 .map-request-state {
   position: absolute;

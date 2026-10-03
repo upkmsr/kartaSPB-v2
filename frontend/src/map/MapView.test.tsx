@@ -1,7 +1,7 @@
 import { act, render } from "@testing-library/react";
 import * as maplibregl from "maplibre-gl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultVisibleLayerIds } from "./layerRegistry";
+import { defaultVisibleLayerIds, renderLayerIds } from "./layerRegistry";
 import { MapView } from "./MapView";
 import type { CatalogFeatureCollection } from "./mapTypes";
 
@@ -13,7 +13,11 @@ type MockMapInstance = {
   districtSource: MockSource | null;
   addedSourceData: unknown[];
   addedDistrictSourceData: unknown[];
-  renderedFeatures: Array<{ id?: string | number; properties?: Record<string, unknown> }>;
+  renderedFeatures: Array<{
+    id?: string | number;
+    properties?: Record<string, unknown>;
+    layer?: { id: string };
+  }>;
   zoom: number;
   bounds: { west: number; south: number; east: number; north: number };
   emit: (event: string, value?: unknown) => void;
@@ -35,7 +39,11 @@ vi.mock("maplibre-gl", () => {
     districtSource: MockSource | null = null;
     addedSourceData: unknown[] = [];
     addedDistrictSourceData: unknown[] = [];
-    renderedFeatures: Array<{ id?: string | number; properties?: Record<string, unknown> }> = [];
+    renderedFeatures: Array<{
+      id?: string | number;
+      properties?: Record<string, unknown>;
+      layer?: { id: string };
+    }> = [];
     canvas = document.createElement("canvas");
     zoom = 12;
     bounds = { west: 30.3, south: 59.93, east: 30.32, north: 59.945 };
@@ -152,7 +160,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId={null}
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -170,6 +178,7 @@ describe("MapView MapLibre integration", () => {
     expect(map.layers.has("water-fill")).toBe(true);
     expect(map.layers.has("school-point")).toBe(true);
     expect(map.layers.has("road-line")).toBe(true);
+    expect(renderLayerIds.every((id) => map.layers.has(id))).toBe(true);
     expect(map.layers.has("selection-point")).toBe(true);
     expect(map.layers.has("selected-district-fill")).toBe(true);
     expect(map.layers.has("selected-district-outline")).toBe(true);
@@ -195,7 +204,7 @@ describe("MapView MapLibre integration", () => {
     const pointId = "3f24df02-2d4c-4595-bc44-74e0c7af83cd";
     const areaId = "0014437e-092b-479f-a006-10c926604682";
     const entityId = "9f3f27a5-950f-5c24-adce-5fe4db2c36c7";
-    const onFeatureSelect = vi.fn();
+    const onSelection = vi.fn();
     const onVisibleFeatureIdsChange = vi.fn();
     const featureCollection: CatalogFeatureCollection = {
       type: "FeatureCollection",
@@ -229,7 +238,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId={areaId}
-        onFeatureSelect={onFeatureSelect}
+        onSelection={onSelection}
         onVisibleFeatureIdsChange={onVisibleFeatureIdsChange}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -241,10 +250,16 @@ describe("MapView MapLibre integration", () => {
 
     expect(onVisibleFeatureIdsChange).toHaveBeenLastCalledWith(new Set([pointId, areaId]));
     map.renderedFeatures = [
-      { properties: { canonical_id: pointId, representative_canonical_id: pointId } },
+      {
+        layer: { id: "clinic-fill" },
+        properties: { canonical_id: pointId, representative_canonical_id: pointId },
+      },
     ];
     act(() => map.emit("click", { point: { x: 1, y: 1 } }));
-    expect(onFeatureSelect).toHaveBeenCalledWith(pointId);
+    expect(onSelection).toHaveBeenCalledWith({
+      kind: "canonical-object",
+      objectId: pointId,
+    });
     expect(JSON.stringify(map.layers.get("selection-fill"))).toContain(
       JSON.stringify(["in", areaId, ["get", "member_canonical_ids"]]),
     );
@@ -279,7 +294,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId={null}
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -319,7 +334,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId={null}
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={onRequestStateChange}
         onZoomChange={vi.fn()}
@@ -376,7 +391,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId="0014437e-092b-479f-a006-10c926604682"
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={onVisibleFeatureIdsChange}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -395,7 +410,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId="0014437e-092b-479f-a006-10c926604682"
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={onVisibleFeatureIdsChange}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -449,7 +464,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId={null}
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={onRequestStateChange}
         onZoomChange={vi.fn()}
@@ -491,7 +506,7 @@ describe("MapView MapLibre integration", () => {
       districtIds: [] as string[],
       navigationRequest: null,
       selectedFeatureId: null,
-      onFeatureSelect: vi.fn(),
+      onSelection: vi.fn(),
       onVisibleFeatureIdsChange: vi.fn(),
       onRequestStateChange,
       onZoomChange: vi.fn(),
@@ -554,7 +569,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId={null}
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -593,7 +608,7 @@ describe("MapView MapLibre integration", () => {
       districtIds: [] as string[],
       navigationRequest: null,
       selectedFeatureId: null,
-      onFeatureSelect: vi.fn(),
+      onSelection: vi.fn(),
       onVisibleFeatureIdsChange: vi.fn(),
       onRequestStateChange,
       onZoomChange: vi.fn(),
@@ -620,14 +635,14 @@ describe("MapView MapLibre integration", () => {
         headers: { "Content-Type": "application/json" },
       }),
     );
-    const onFeatureSelect = vi.fn();
+    const onSelection = vi.fn();
     render(
       <MapView
         visibleLayerIds={defaultVisibleLayerIds()}
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId={null}
-        onFeatureSelect={onFeatureSelect}
+        onSelection={onSelection}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -640,14 +655,16 @@ describe("MapView MapLibre integration", () => {
     map.renderedFeatures = [
       {
         id: 17,
+        layer: { id: "pharmacy-point" },
         properties: { canonical_id: "c49e54e1-3481-4b07-9f81-0b161b57b62b" },
       },
     ];
     act(() => map.emit("click", { point: { x: 10, y: 10 } }));
 
-    expect(onFeatureSelect).toHaveBeenCalledWith(
-      "c49e54e1-3481-4b07-9f81-0b161b57b62b",
-    );
+    expect(onSelection).toHaveBeenCalledWith({
+      kind: "canonical-object",
+      objectId: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+    });
   });
 
   it("reloads the existing pipeline with district UUIDs and fits requested bbox", async () => {
@@ -665,7 +682,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId={null}
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -687,7 +704,7 @@ describe("MapView MapLibre integration", () => {
           bbox: [29.95, 59.91, 30.41, 60.07],
         }}
         selectedFeatureId={null}
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -741,7 +758,7 @@ describe("MapView MapLibre integration", () => {
       visibleLayerIds: defaultVisibleLayerIds(),
       navigationRequest: null,
       selectedFeatureId: null,
-      onFeatureSelect: vi.fn(),
+      onSelection: vi.fn(),
       onVisibleFeatureIdsChange: vi.fn(),
       onRequestStateChange: vi.fn(),
       onZoomChange: vi.fn(),
@@ -815,7 +832,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId={null}
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -830,7 +847,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={["161ba369-c548-5569-9cc2-679522090220"]}
         navigationRequest={null}
         selectedFeatureId={null}
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -862,7 +879,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={null}
         selectedFeatureId={null}
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}
@@ -878,7 +895,7 @@ describe("MapView MapLibre integration", () => {
         districtIds={[]}
         navigationRequest={{ sequence: 2, kind: "point", center: [30.3, 59.9], zoom: 16 }}
         selectedFeatureId={null}
-        onFeatureSelect={vi.fn()}
+        onSelection={vi.fn()}
         onVisibleFeatureIdsChange={vi.fn()}
         onRequestStateChange={vi.fn()}
         onZoomChange={vi.fn()}

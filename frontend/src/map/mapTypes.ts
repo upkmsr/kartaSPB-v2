@@ -1,4 +1,3 @@
-import type { CircleLayerSpecification, FillLayerSpecification, LineLayerSpecification } from "maplibre-gl";
 import type {
   Feature,
   FeatureCollection,
@@ -70,41 +69,6 @@ export type FacilityRepresentation = {
   display_object_id: string;
   analysis_object_id: string;
   members: FacilityMember[];
-};
-
-export type RenderGeometry = "point" | "line" | "polygon";
-
-export type RenderDefinition =
-  | {
-      id: string;
-      order: number;
-      type: "circle";
-      geometry: "point";
-      paint: NonNullable<CircleLayerSpecification["paint"]>;
-    }
-  | {
-      id: string;
-      order: number;
-      type: "line";
-      geometry: "line" | "polygon";
-      paint: NonNullable<LineLayerSpecification["paint"]>;
-    }
-  | {
-      id: string;
-      order: number;
-      type: "fill";
-      geometry: "polygon";
-      paint: NonNullable<FillLayerSpecification["paint"]>;
-    };
-
-export type LogicalLayer = {
-  id: string;
-  categoryKey: string;
-  label: string;
-  defaultVisible: boolean;
-  minZoom: number;
-  interactive: boolean;
-  renderDefinitions: RenderDefinition[];
 };
 
 export type MapBounds = {

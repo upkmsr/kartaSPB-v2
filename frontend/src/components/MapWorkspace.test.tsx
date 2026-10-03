@@ -1,25 +1,54 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
+import type { MapSelection } from "../map/layerContract";
 import { MapWorkspace } from "./MapWorkspace";
 
 vi.mock("../map/MapView", () => ({
   MapView: ({
-    onFeatureSelect,
+    onSelection,
     onVisibleFeatureIdsChange,
   }: {
-    onFeatureSelect: (id: string) => void;
+    onSelection: (selection: MapSelection) => void;
     onVisibleFeatureIdsChange: (ids: ReadonlySet<string>) => void;
   }) => (
     <>
-      <button type="button" onClick={() => onFeatureSelect("c49e54e1-3481-4b07-9f81-0b161b57b62b")}>
+      <button
+        type="button"
+        onClick={() =>
+          onSelection({
+            kind: "canonical-object",
+            objectId: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+          })
+        }
+      >
         Выбрать аптеку
       </button>
-      <button type="button" onClick={() => onFeatureSelect("0014437e-092b-479f-a006-10c926604682")}>
+      <button
+        type="button"
+        onClick={() =>
+          onSelection({
+            kind: "canonical-object",
+            objectId: "0014437e-092b-479f-a006-10c926604682",
+          })
+        }
+      >
         Выбрать парк
       </button>
       <button type="button" onClick={() => onVisibleFeatureIdsChange(new Set())}>
         Применить пустой scope
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onSelection({
+            kind: "layer-feature",
+            layerId: "planning-demo",
+            featureId: "zone-42",
+          })
+        }
+      >
+        Выбрать внешний слой
       </button>
     </>
   ),
@@ -77,6 +106,16 @@ it("loads object details after feature selection and closes the card", async () 
   expect(screen.getByText("Загружаем объект")).toBeInTheDocument();
   await waitFor(() => expect(screen.getByRole("heading", { name: "Озерки" })).toBeInTheDocument());
   fireEvent.click(screen.getByRole("button", { name: "Закрыть карточку" }));
+  expect(screen.queryByLabelText("Карточка объекта")).not.toBeInTheDocument();
+});
+
+it("does not route a generic layer feature into canonical ObjectDetail", () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch");
+  render(<WorkspaceHarness />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Выбрать внешний слой" }));
+
+  expect(fetchMock).not.toHaveBeenCalled();
   expect(screen.queryByLabelText("Карточка объекта")).not.toBeInTheDocument();
 });
 
