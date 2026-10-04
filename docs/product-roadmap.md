@@ -3,7 +3,7 @@
 The accepted platform sequence is deliberately data-first:
 
 1. Foundation Closeout — **DONE**
-2. F6 Analysis Grid — **current; DONE only after production and visual acceptance**
+2. F6 Analysis Grid — **DONE**
 3. F7 Metric Engine
 4. F8 Existing Data Metrics
 5. F9 Scoring Engine
