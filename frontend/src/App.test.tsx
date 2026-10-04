@@ -82,7 +82,7 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getAllByText("READY")).toHaveLength(2));
     await screen.findByRole("checkbox", { name: "Центральный" });
-    expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(29);
+    expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(30);
     const scrollArea = screen.getByRole("region", {
       name: "Прокручиваемые настройки карты",
     });

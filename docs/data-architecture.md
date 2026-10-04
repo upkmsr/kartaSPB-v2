@@ -24,6 +24,12 @@ UPI-A adds `upi` as a separate evidence boundary. It reuses global source identi
 contract, transactional failure behavior and retention gate are documented in
 [upi-source-foundation.md](upi-source-foundation.md).
 
+F6 activates the existing `analytics` boundary with
+`analytics.analysis_cells`. It stores a deterministic 200 m square grid in both
+EPSG:32636 (analysis) and EPSG:4326 (display), linked to stable district UUIDs. It does
+not store catalog objects, source evidence, metrics, scores, or user state. See
+[analysis-grid.md](analysis-grid.md).
+
 ## Source registry
 
 `meta.dataset_sources` records stable identity and provenance: name, provider, type, URL, licence, attribution, provider version, SHA-256, local filename, download time, and upstream modification time. OSM values originate in `config/osm/source.json`, not Python constants.
@@ -114,6 +120,10 @@ GIS core; revision `20260924_0005` creates category persistence. Runtime
 application code never calls `create_all()`. Revision `20261003_0011` adds only the
 separate UPI source-evidence schema; applying it to production requires its own explicit
 rollout authorization.
+
+Revision `20261004_0012` adds only the F6 analysis-cell table and indexes. Cell creation
+is an explicit, transactional bootstrap after migration; the migration itself performs
+no data generation.
 # Category Engine (FOUNDATION 3B)
 
 The canonical catalog remains provider-independent. Category definitions live in

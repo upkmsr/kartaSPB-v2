@@ -10,7 +10,7 @@ import {
 } from "./layerRegistry";
 
 describe("layerRegistry", () => {
-  it("defines the ten ordered logical layers and render definitions", () => {
+  it("defines ten catalog layers plus the analysis grid", () => {
     expect(layerRegistry.map((layer) => layer.id)).toEqual([
       "water",
       "park",
@@ -22,12 +22,33 @@ describe("layerRegistry", () => {
       "road",
       "boundary",
       "stop",
+      "analysis-grid",
     ]);
     expect(layerRegistry.every((layer) => layer.renderDefinitions.length > 0)).toBe(true);
     expect(layerRegistry.find((layer) => layer.id === "boundary")?.defaultVisible).toBe(false);
+    const grid = layerRegistry.find((layer) => layer.id === "analysis-grid");
+    expect(grid).toMatchObject({
+      groupId: "analytics",
+      layerClass: "derived-analysis",
+      defaultVisible: false,
+      minZoom: 11,
+      selection: { kind: "none" },
+      loadingStrategy: "tiles",
+    });
+    expect(grid?.source).toMatchObject({
+      type: "derived",
+      loadParticipation: "maplibre-native",
+      districtHandling: "ignored",
+    });
     const orderedIds = orderedRenderDefinitions.map((item) => item.definition.id);
     expect(orderedIds.indexOf("road-line")).toBeLessThan(orderedIds.indexOf("school-point"));
     expect(orderedIds.indexOf("boundary-line")).toBeLessThan(orderedIds.indexOf("stop-point"));
+  });
+
+  it("keeps the analysis grid out of catalog loading and interactions", () => {
+    const visible = new Set(["water", "analysis-grid"]);
+    expect(activeCategoryKeys(visible, 12)).toEqual(["nature.water"]);
+    expect(enabledCategoryKeys(visible)).toEqual(["nature.water"]);
   });
 
   it("activates unique categories only for visible layers at their minimum zoom", () => {

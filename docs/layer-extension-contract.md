@@ -1,8 +1,8 @@
 # Layer extension contract
 
 F5.5-S7 separates a layer's meaning from its transport, loading lifecycle, rendering,
-and selection behavior. Production still contains only the ten current catalog layers;
-the additional examples below are declarative, test-only extension proofs.
+and selection behavior. F6 retains the ten catalog layers and adds one real derived
+analysis layer; the other examples below remain declarative, test-only extension proofs.
 
 ## Contract dimensions
 
@@ -71,6 +71,12 @@ All ten production declarations use the same canonical catalog mapping:
 
 Their labels, paint declarations, render order, interaction behavior, and current
 default visibility are preserved by the migration.
+
+The eleventh production declaration is `analysis-grid` in the separate `analytics`
+group (`Аналитика`). It uses derived vector tiles from
+`/api/analysis/grid/tiles/{z}/{x}/{y}.mvt`, source layer `analysis_grid`, minimum zoom 11,
+and default off. It is non-selectable, district-scope agnostic, and MapLibre-native, so
+it never enters catalog aggregation or the S6 auto/manual loading state.
 
 District UUIDs are sent only to the catalog request. Other sources explicitly declare
 whether district scope is ignored or managed by that source. The selected-district
@@ -196,8 +202,9 @@ const derivedAnalysis = {
 };
 ```
 
-Executable versions of all five classes, plus vector tiles, live only in
-`layerContract.test.ts` and `layerRuntime.test.ts`.
+Executable extension proofs for all five classes and transport types live in
+`layerContract.test.ts` and `layerRuntime.test.ts`; the F6 analysis grid is the first
+production `derived-analysis` vector-tile declaration.
 
 ## Registry validation
 

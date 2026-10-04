@@ -1,3 +1,4 @@
+from app.api.schemas.analysis import AnalysisGridDistrictCount, AnalysisGridMeta
 from app.api.schemas.districts import (
     DistrictGeometry,
     DistrictGeometryFeature,
@@ -21,6 +22,8 @@ from app.api.schemas.map import (
 from app.api.schemas.search import SearchResult, SearchResultList
 
 __all__ = [
+    "AnalysisGridDistrictCount",
+    "AnalysisGridMeta",
     "DistrictList",
     "DistrictSummary",
     "DistrictGeometry",

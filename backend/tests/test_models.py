@@ -1,4 +1,5 @@
 from app.db.models import (
+    AnalysisCell,
     CatalogObject,
     CatalogRelationship,
     DatasetSource,
@@ -17,6 +18,27 @@ from app.db.models import (
     UpiSourceProfile,
     UpiSourceSnapshot,
 )
+
+
+def test_analysis_cell_model_keeps_metric_and_display_geometry() -> None:
+    assert AnalysisCell.__table__.schema == "analytics"
+    assert {column.name for column in AnalysisCell.__table__.columns} == {
+        "cell_id",
+        "grid_version",
+        "grid_i",
+        "grid_j",
+        "cell_size_m",
+        "district_id",
+        "center",
+        "center_metric",
+        "geom",
+        "geom_metric",
+        "created_at",
+    }
+    assert AnalysisCell.__table__.c.center.type.srid == 4326
+    assert AnalysisCell.__table__.c.center_metric.type.srid == 32636
+    assert AnalysisCell.__table__.c.geom.type.srid == 4326
+    assert AnalysisCell.__table__.c.geom_metric.type.srid == 32636
 
 
 def test_dataset_source_model_uses_meta_schema() -> None:

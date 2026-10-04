@@ -10,7 +10,9 @@ External open data flows through source adapters, staging, normalisation, and a 
 
 The target UI is a desktop web application for mouse, keyboard, and a large map viewport. The minimum supported width is 1280 px; phone and tablet layouts are intentionally outside scope.
 
-Read [architecture.md](docs/architecture.md), [data-architecture.md](docs/data-architecture.md), and [data-sources.md](docs/data-sources.md) for the design boundaries.
+Read [architecture.md](docs/architecture.md), [data-architecture.md](docs/data-architecture.md),
+[analysis-grid.md](docs/analysis-grid.md), [product-roadmap.md](docs/product-roadmap.md),
+and [data-sources.md](docs/data-sources.md) for the design boundaries.
 
 ## Quick start
 

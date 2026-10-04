@@ -12,6 +12,7 @@ import {
 
 export const layerGroups: readonly LayerGroup[] = [
   { id: "city-objects", label: "Городские объекты", order: 10 },
+  { id: "analytics", label: "Аналитика", order: 20 },
 ] as const;
 
 type CatalogLayerConfig = Pick<
@@ -248,6 +249,51 @@ export const layerRegistry: readonly LayerDefinition[] = [
       },
     ],
   }),
+  {
+    id: "analysis-grid",
+    label: "Аналитическая сетка",
+    groupId: "analytics",
+    layerClass: "derived-analysis",
+    source: {
+      type: "derived",
+      sourceId: "analysis-grid-source",
+      delivery: {
+        type: "vector-tile",
+        tiles: ["/api/analysis/grid/tiles/{z}/{x}/{y}.mvt"],
+      },
+      loadParticipation: "maplibre-native",
+      districtHandling: "ignored",
+    },
+    defaultVisible: false,
+    minZoom: 11,
+    selection: { kind: "none" },
+    loadingStrategy: "tiles",
+    time: { kind: "none" },
+    legend: { kind: "fill", color: "#c8d3d8", outlineColor: "#dce5e8" },
+    opacity: { default: 1, adjustable: false, applyTo: [] },
+    provenance: {
+      kind: "internal",
+      sourceLabel: "KARTASPB deterministic analysis grid",
+    },
+    renderDefinitions: [
+      {
+        id: "analysis-grid-fill",
+        order: 1,
+        type: "fill",
+        geometry: "polygon",
+        sourceLayer: "analysis_grid",
+        paint: { "fill-color": "#d5e0e4", "fill-opacity": 0.06 },
+      },
+      {
+        id: "analysis-grid-outline",
+        order: 2,
+        type: "line",
+        geometry: "polygon",
+        sourceLayer: "analysis_grid",
+        paint: { "line-color": "#cbd8dd", "line-width": 0.65, "line-opacity": 0.52 },
+      },
+    ],
+  },
 ] as const;
 
 assertValidLayerRegistry(layerRegistry, layerGroups);

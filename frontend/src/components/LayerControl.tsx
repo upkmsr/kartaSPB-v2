@@ -1,4 +1,5 @@
-import { layerRegistry } from "../map/layerRegistry";
+import { layerGroups, layerRegistry } from "../map/layerRegistry";
+import { orderedGroups } from "../map/layerRegistryHelpers";
 import type { MapRequestState } from "../map/mapTypes";
 import type { CSSProperties } from "react";
 import type { LegendDefinition } from "../map/layerContract";
@@ -92,27 +93,37 @@ export function LayerControl({
         </button>
       </div>
       <div className="layer-control__list">
-        {layerRegistry.map((layer) => {
-          const belowMinZoom = zoom < layer.minZoom;
-          const enabled = visibleLayerIds.has(layer.id);
-          const status = layerStatus(layer.id, enabled, belowMinZoom, requestState);
-          return (
-            <label className={belowMinZoom ? "layer-toggle layer-toggle--muted" : "layer-toggle"} key={layer.id}>
-              <input
-                type="checkbox"
-                checked={enabled}
-                onChange={() => onToggle(layer.id)}
-              />
-              <span
-                className={`layer-swatch layer-swatch--${layer.legend.kind}`}
-                style={legendStyle(layer.legend)}
-                aria-hidden="true"
-              />
-              <span>{layer.label}</span>
-              <small>{belowMinZoom ? `с z${layer.minZoom}` : status}</small>
-            </label>
-          );
-        })}
+        {orderedGroups(layerGroups, layerRegistry).map(({ group, layers }) => (
+          <section className="layer-control__group" aria-labelledby={`layer-group-${group.id}`} key={group.id}>
+            <p id={`layer-group-${group.id}`} className="layer-control__group-label">
+              {group.label}
+            </p>
+            {layers.map((layer) => {
+              const belowMinZoom = zoom < layer.minZoom;
+              const enabled = visibleLayerIds.has(layer.id);
+              const status = layerStatus(layer.id, enabled, belowMinZoom, requestState);
+              return (
+                <label
+                  className={belowMinZoom ? "layer-toggle layer-toggle--muted" : "layer-toggle"}
+                  key={layer.id}
+                >
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={() => onToggle(layer.id)}
+                  />
+                  <span
+                    className={`layer-swatch layer-swatch--${layer.legend.kind}`}
+                    style={legendStyle(layer.legend)}
+                    aria-hidden="true"
+                  />
+                  <span>{layer.label}</span>
+                  <small>{belowMinZoom ? `с z${layer.minZoom}` : status}</small>
+                </label>
+              );
+            })}
+          </section>
+        ))}
       </div>
     </section>
   );

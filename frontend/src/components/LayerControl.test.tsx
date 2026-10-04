@@ -21,6 +21,9 @@ it("renders visibility state, min-zoom hints, and layer toggles", () => {
   expect(screen.getByRole("checkbox", { name: /Школы/ })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: /Адм. границы/ })).not.toBeChecked();
   expect(screen.getByText("с z16")).toBeInTheDocument();
+  expect(screen.getByText("Городские объекты")).toBeInTheDocument();
+  expect(screen.getByText("Аналитика")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: /Аналитическая сетка/ })).not.toBeChecked();
   fireEvent.click(screen.getByRole("checkbox", { name: /Дороги/ }));
   expect(onToggle).toHaveBeenCalledWith("road");
 });

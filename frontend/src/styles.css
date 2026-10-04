@@ -638,6 +638,26 @@ label:focus-visible {
   gap: 1px;
 }
 
+.layer-control__group {
+  display: grid;
+  gap: 1px;
+}
+
+.layer-control__group + .layer-control__group {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+}
+
+.layer-control__group-label {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .layer-loading-settings {
   display: grid;
   gap: 7px;
