@@ -79,6 +79,21 @@ database. No production DDL or DML was used.
 
 The fixture used only synthetic signed raw values and did not create a product metric.
 
+## Production acceptance
+
+F7 was accepted in production on 2026-10-04 from repository commit
+`cb8968e53208a58dd60cc8a74dc8f9e3f09d7c1c`:
+
+- Alembic revision is `20261004_0013`;
+- all three metric-engine tables and both append-only guards are present;
+- the production registry contains zero real metric definitions;
+- runs, cell values, and current pointers are all empty;
+- the accepted 36,292-cell F6 grid and its checksum are unchanged;
+- catalog, category, district, facility, street, and UPI invariants are unchanged;
+- backend readiness and existing product APIs pass against revision `0013`.
+
+No synthetic metric was published in production. F8 has not started.
+
 ## Deferred
 
 F8 owns real existing-data metric definitions/providers. F9 owns normalization and
