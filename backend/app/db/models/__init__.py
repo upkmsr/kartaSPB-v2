@@ -1,4 +1,9 @@
-from app.db.models.analytics import AnalysisCell
+from app.db.models.analytics import (
+    AnalysisCell,
+    CellMetricValue,
+    MetricCurrentRun,
+    MetricRun,
+)
 from app.db.models.catalog import (
     CatalogObject,
     CatalogRelationship,
@@ -33,6 +38,7 @@ from app.db.models.upi import (
 
 __all__ = [
     "AnalysisCell",
+    "CellMetricValue",
     "DatasetSource",
     "District",
     "FacilityEntity",
@@ -44,6 +50,8 @@ __all__ = [
     "Category",
     "ImportRun",
     "ImportRunStatus",
+    "MetricCurrentRun",
+    "MetricRun",
     "OsmNode",
     "OsmProfileMembership",
     "OsmRelation",

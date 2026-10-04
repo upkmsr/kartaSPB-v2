@@ -30,6 +30,11 @@ EPSG:32636 (analysis) and EPSG:4326 (display), linked to stable district UUIDs. 
 not store catalog objects, source evidence, metrics, scores, or user state. See
 [analysis-grid.md](analysis-grid.md).
 
+F7 adds immutable metric runs and raw cell values plus an atomic mutable current pointer.
+Definitions remain declarative and providers remain separate from persistence. Production
+contains no real metric definitions in F7; normalization, scoring, heatmaps, and scenarios
+are later stages. See [metric-engine.md](metric-engine.md).
+
 ## Source registry
 
 `meta.dataset_sources` records stable identity and provenance: name, provider, type, URL, licence, attribution, provider version, SHA-256, local filename, download time, and upstream modification time. OSM values originate in `config/osm/source.json`, not Python constants.
@@ -124,6 +129,10 @@ rollout authorization.
 Revision `20261004_0012` adds only the F6 analysis-cell table and indexes. Cell creation
 is an explicit, transactional bootstrap after migration; the migration itself performs
 no data generation.
+
+Revision `20261004_0013` adds the three F7 metric publication tables and append-only
+guards. It contains no metric definitions and performs no metric calculation or data
+bootstrap.
 # Category Engine (FOUNDATION 3B)
 
 The canonical catalog remains provider-independent. Category definitions live in

@@ -2,12 +2,15 @@ from app.db.models import (
     AnalysisCell,
     CatalogObject,
     CatalogRelationship,
+    CellMetricValue,
     DatasetSource,
     District,
     FacilityEntity,
     FacilityEntityMember,
     ImportRun,
     ImportRunStatus,
+    MetricCurrentRun,
+    MetricRun,
     ObjectSource,
     OsmProfileMembership,
     OsmRelationGeometry,
@@ -39,6 +42,37 @@ def test_analysis_cell_model_keeps_metric_and_display_geometry() -> None:
     assert AnalysisCell.__table__.c.center_metric.type.srid == 32636
     assert AnalysisCell.__table__.c.geom.type.srid == 4326
     assert AnalysisCell.__table__.c.geom_metric.type.srid == 32636
+
+
+def test_metric_models_separate_history_values_and_current_pointer() -> None:
+    assert MetricRun.__table__.schema == "analytics"
+    assert CellMetricValue.__table__.schema == "analytics"
+    assert MetricCurrentRun.__table__.schema == "analytics"
+    assert {column.name for column in MetricRun.__table__.columns} == {
+        "run_id",
+        "metric_key",
+        "definition_version",
+        "calculation_version",
+        "grid_version",
+        "definition_checksum",
+        "input_fingerprint",
+        "definition_snapshot",
+        "run_signature",
+        "cell_count",
+        "min_value",
+        "max_value",
+        "mean_value",
+        "values_checksum",
+        "created_at",
+    }
+    assert {column.name for column in CellMetricValue.__table__.primary_key.columns} == {
+        "run_id",
+        "cell_id",
+    }
+    assert {column.name for column in MetricCurrentRun.__table__.primary_key.columns} == {
+        "metric_key",
+        "grid_version",
+    }
 
 
 def test_dataset_source_model_uses_meta_schema() -> None:
