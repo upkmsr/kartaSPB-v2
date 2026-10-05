@@ -14,9 +14,8 @@ enums, invalid keys, blank versions, and duplicate keys. Ordering and the regist
 SHA-256 are deterministic.
 
 F7 launched with an intentionally empty production registry. F8 adds the twelve accepted
-existing-data definitions to the repository registry; production remains on the empty
-F7 artifact until the separately authorized F8 rollout. See
-`docs/existing-data-metrics.md` for their exact semantics.
+existing-data definitions and two catalog spatial providers. See
+`docs/existing-data-metrics.md` for their exact semantics and production acceptance.
 
 ## Persistence and publication
 
@@ -59,7 +58,7 @@ Human-supplied fingerprints are neither required nor accepted for production pro
 
 ## Read API
 
-- `GET /api/analysis/metrics` lists enabled public definitions; F7 production returns `[]`.
+- `GET /api/analysis/metrics` lists enabled public definitions; F8 production returns 12.
 - `GET /api/analysis/metrics/{key}` returns one public definition or 404.
 - `GET /api/analysis/metrics/{key}/current` returns current run metadata or 404. An optional
   `grid_version` query parameter defaults to `spb-square-200m-v1`.
@@ -96,9 +95,10 @@ F7 was accepted in production on 2026-10-04 from repository commit
 - catalog, category, district, facility, street, and UPI invariants are unchanged;
 - backend readiness and existing product APIs pass against revision `0013`.
 
-No synthetic metric was published in production. The F8 implementation and isolated
-real-data rehearsal do not alter this production state; F8 is not DONE until its explicit
-production publication and rollout acceptance.
+No synthetic metric was published in production. On 2026-10-05, the explicitly
+authorized F8 rollout published exactly twelve real runs and 435,504 values, installed
+twelve current pointers, and deployed the accepted F8 backend. Alembic remains
+`20261004_0013`; existing data invariants are unchanged.
 
 ## Deferred
 

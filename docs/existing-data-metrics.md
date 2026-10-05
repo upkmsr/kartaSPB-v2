@@ -3,8 +3,7 @@
 F8 defines twelve raw, citywide metrics for the accepted
 `spb-square-200m-v1` analysis grid. The implementation uses the universal F7
 publication tables; it adds no migration, metric-specific table, or metric-specific
-column. Production publication and backend rollout remain a separate, explicitly
-authorized step.
+column.
 
 ## Metric definitions
 
@@ -87,6 +86,26 @@ from 2,546 to 2,545. The pharmacy-distance fingerprint changed from
 `b0e2a96d40c2073650438f4ff5069658b6d9683cfc6cb48901b2bb54fdde1e79`, created a
 new immutable run, retained the original run, and advanced the current pointer. This
 change occurred only in the disposable rehearsal database.
+
+## Production acceptance
+
+F8 was accepted in production on 2026-10-05 from repository commit
+`220b5498febafd085d777fd65f2c3adabff7b6b0` and backend image
+`sha256:df295ff65c6d81e711f30dab04646d8fcabde553bfbe9c19c9345467157f6536`.
+Exactly one `run-all` publication created twelve immutable metric runs, 435,504 cell
+values, and twelve current pointers. Production fingerprints and value checksums matched
+the rehearsal results exactly. All runs contain 36,292 finite, non-negative cell values;
+duplicate cell values are absent.
+
+The database remained on Alembic `20261004_0013`. The accepted grid, catalog, category,
+district, facility, street, and UPI invariants remained unchanged. The deployed API lists
+exactly twelve definitions and all twelve current-run endpoints pass. Existing map,
+search, ObjectDetail, district, grid, backend-health, and frontend checks also pass.
+
+The verified pre-publication backup is
+`/private/tmp/kartaspb-f8-pre-20261005T083220Z.dump`, SHA-256
+`e45702eda3a8a00e2ea35097b5a076860c93387844eb28da48815e350f611521`.
+The previous F7 backend image and stopped container are retained as rollback checkpoints.
 
 ## Limitations
 
