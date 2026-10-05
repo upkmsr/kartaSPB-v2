@@ -54,7 +54,7 @@ def test_registry_orders_definitions_and_rejects_duplicate_keys() -> None:
         MetricRegistry([first, first])
 
 
-def test_registry_file_validation_and_empty_production_registry(tmp_path: Path) -> None:
+def test_registry_file_validation(tmp_path: Path) -> None:
     empty = tmp_path / "empty.json"
     empty.write_text('{"metrics": []}', encoding="utf-8")
     assert MetricRegistry.load(empty).list() == ()
@@ -65,6 +65,33 @@ def test_registry_file_validation_and_empty_production_registry(tmp_path: Path) 
     )
     with pytest.raises(MetricRegistryError, match="duplicate metric keys"):
         MetricRegistry.load(duplicate)
+
+
+def test_production_registry_contains_exact_f8_contract() -> None:
+    registry = MetricRegistry.load()
+    definitions = registry.list()
+    assert [definition.key for definition in definitions] == [
+        "education.kindergarten.count_1000m",
+        "education.kindergarten.distance_m",
+        "education.school.count_1000m",
+        "education.school.distance_m",
+        "healthcare.clinic.distance_m",
+        "healthcare.hospital.distance_m",
+        "healthcare.pharmacy.count_1000m",
+        "healthcare.pharmacy.distance_m",
+        "nature.park.distance_m",
+        "nature.water.distance_m",
+        "transport.stop.count_500m",
+        "transport.stop.distance_m",
+    ]
+    assert {definition.definition_version for definition in definitions} == {"1"}
+    assert {definition.calculation_version for definition in definitions} == {
+        "catalog-spatial-v1"
+    }
+    assert {definition.provider_key for definition in definitions} == {
+        "catalog.nearest_distance",
+        "catalog.count_within_radius",
+    }
 
 
 def test_value_checksum_is_order_independent_and_float_exact() -> None:

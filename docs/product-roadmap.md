@@ -5,7 +5,7 @@ The accepted platform sequence is deliberately data-first:
 1. Foundation Closeout — **DONE**
 2. F6 Analysis Grid — **DONE**
 3. F7 Metric Engine — **DONE**
-4. F8 Existing Data Metrics
+4. F8 Existing Data Metrics — **IMPLEMENTED; PRODUCTION ROLLOUT PENDING**
 5. F9 Scoring Engine
 6. F10 Heatmap
 7. F11 Scenario Builder
@@ -16,5 +16,6 @@ scores, heatmaps, scenarios, or ingest another evidence source. UPI-B/C/D are no
 next product stages.
 
 F7 provides only the versioned definition, provider, immutable run/value, current-pointer,
-CLI, and read-API contracts. The production definition registry is empty, so real metrics
-still begin in F8 only after F7 production acceptance.
+CLI, and read-API contracts. F8 implements the twelve accepted catalog-derived raw
+metrics and has passed isolated real-data rehearsal. It remains not DONE until explicit
+production publication and backend rollout acceptance.

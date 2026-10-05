@@ -1,6 +1,5 @@
-from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from sqlalchemy import Engine
 
@@ -14,8 +13,16 @@ class MetricProviderContext:
     grid_version: str
 
 
+@dataclass(frozen=True)
+class MetricCalculation:
+    input_fingerprint: str
+    values: tuple[tuple[str, float], ...]
+    diagnostics: dict[str, Any]
+    calculation_duration_seconds: float
+
+
 class MetricProvider(Protocol):
-    def calculate(self, context: MetricProviderContext) -> Iterable[tuple[str, float]]: ...
+    def calculate(self, context: MetricProviderContext) -> MetricCalculation: ...
 
 
 class MetricProviderRegistry:
@@ -24,3 +31,17 @@ class MetricProviderRegistry:
 
     def get(self, key: str) -> MetricProvider | None:
         return self._providers.get(key)
+
+    @classmethod
+    def production(cls) -> "MetricProviderRegistry":
+        from app.analytics.metrics.catalog import (
+            CatalogCountWithinRadiusProvider,
+            CatalogNearestDistanceProvider,
+        )
+
+        return cls(
+            {
+                "catalog.nearest_distance": CatalogNearestDistanceProvider(),
+                "catalog.count_within_radius": CatalogCountWithinRadiusProvider(),
+            }
+        )

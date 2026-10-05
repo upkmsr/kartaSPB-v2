@@ -13,9 +13,10 @@ source dependencies, and an enabled flag. The loader rejects unknown fields, inv
 enums, invalid keys, blank versions, and duplicate keys. Ordering and the registry
 SHA-256 are deterministic.
 
-The production registry intentionally contains zero definitions. Tests and the isolated
-rehearsal inject a synthetic fixture; it is not a school, park, transport, or other
-product metric.
+F7 launched with an intentionally empty production registry. F8 adds the twelve accepted
+existing-data definitions to the repository registry; production remains on the empty
+F7 artifact until the separately authorized F8 rollout. See
+`docs/existing-data-metrics.md` for their exact semantics.
 
 ## Persistence and publication
 
@@ -40,18 +41,21 @@ pointers.
 
 ## Provider and command contracts
 
-Providers implement the small `MetricProvider` protocol and return `(cell_id, raw_value)`
-pairs. Provider-specific behavior stays outside the publisher. The production provider
-registry is empty in F7.
+Providers implement the small `MetricProvider` protocol. A calculation returns its
+automatic input fingerprint, complete `(cell_id, raw_value)` set, diagnostics, and
+duration. Provider-specific behavior stays outside the publisher. F8 registers exactly
+`catalog.nearest_distance` and `catalog.count_within_radius`.
 
 ```bash
 python -m app.analytics.metrics validate
 python -m app.analytics.metrics list
-python -m app.analytics.metrics run --metric example.metric.key \
-  --input-fingerprint <sha256>
+python -m app.analytics.metrics run --metric education.school.distance_m
+python -m app.analytics.metrics run-all
 ```
 
 Commands emit JSON. `run` fails closed when a definition or provider is not registered.
+Human-supplied fingerprints are neither required nor accepted for production providers.
+`run-all` processes enabled definitions in stable registry order.
 
 ## Read API
 
@@ -92,9 +96,11 @@ F7 was accepted in production on 2026-10-04 from repository commit
 - catalog, category, district, facility, street, and UPI invariants are unchanged;
 - backend readiness and existing product APIs pass against revision `0013`.
 
-No synthetic metric was published in production. F8 has not started.
+No synthetic metric was published in production. The F8 implementation and isolated
+real-data rehearsal do not alter this production state; F8 is not DONE until its explicit
+production publication and rollout acceptance.
 
 ## Deferred
 
-F8 owns real existing-data metric definitions/providers. F9 owns normalization and
-scoring, F10 heatmaps, and F11 scenarios. F7 does not begin any of them.
+F8 owns the twelve real existing-data definitions and two catalog spatial providers.
+F9 owns normalization and scoring, F10 heatmaps, and F11 scenarios.

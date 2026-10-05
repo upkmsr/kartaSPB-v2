@@ -39,13 +39,37 @@ class FakeMetricQueryService:
         return self._current
 
 
-def test_production_registry_api_is_empty(client: TestClient) -> None:
+def test_empty_registry_override_is_supported(client: TestClient) -> None:
     app.dependency_overrides[get_metric_registry] = lambda: MetricRegistry([])
     try:
         assert client.get("/api/analysis/metrics").json() == []
         assert client.get("/api/analysis/metrics/missing.metric.key").status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+def test_f8_production_registry_api_lists_exactly_twelve_metrics(
+    client: TestClient,
+) -> None:
+    response = client.get("/api/analysis/metrics")
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 12
+    assert [item["key"] for item in payload] == [
+        "education.kindergarten.count_1000m",
+        "education.kindergarten.distance_m",
+        "education.school.count_1000m",
+        "education.school.distance_m",
+        "healthcare.clinic.distance_m",
+        "healthcare.hospital.distance_m",
+        "healthcare.pharmacy.count_1000m",
+        "healthcare.pharmacy.distance_m",
+        "nature.park.distance_m",
+        "nature.water.distance_m",
+        "transport.stop.count_500m",
+        "transport.stop.distance_m",
+    ]
+    assert all("provider_key" not in item for item in payload)
 
 
 def test_metric_api_hides_provider_details_and_exposes_current_run(client: TestClient) -> None:

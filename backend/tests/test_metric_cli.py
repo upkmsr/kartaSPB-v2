@@ -41,8 +41,6 @@ def test_run_fails_closed_without_registered_definition_or_provider() -> None:
                 "run",
                 "--metric",
                 "test.synthetic.value",
-                "--input-fingerprint",
-                "a" * 64,
             ],
             registry=MetricRegistry([]),
         )
@@ -53,8 +51,6 @@ def test_run_fails_closed_without_registered_definition_or_provider() -> None:
                 "run",
                 "--metric",
                 "test.synthetic.value",
-                "--input-fingerprint",
-                "a" * 64,
             ],
             registry=MetricRegistry([definition()]),
             providers=MetricProviderRegistry(),
