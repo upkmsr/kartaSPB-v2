@@ -92,7 +92,7 @@ The HTTP API exposes profile metadata at
 `/{metric_key}` path, and bounded previews at `POST /api/analysis/scoring/evaluate`.
 It never returns every city cell as JSON; F10 owns map delivery.
 
-## F9 implementation acceptance
+## F9 acceptance
 
 The production-shaped rehearsal published 12 current normalized runs and 435,504 values.
 An identical second run produced 12 `UNCHANGED` results. A profile-version change created
@@ -105,4 +105,21 @@ particular, raw count sparsity produces many zero scores, while the water curve 
 large share of currently covered cells at 100. These are reported data/curve properties,
 not hidden percentile normalization.
 
-Production remains on Alembic `20261004_0013` until the separate F9 rollout authorization.
+Production rollout completed on 2026-10-07 at Alembic `20261005_0014`. One authorized
+`normalize-all` publication created exactly 12 immutable score runs, 435,504 cell scores,
+and 12 current pointers. Every normalized-value checksum matched rehearsal; there were no
+missing cells, invalid values, duplicate current pointers, or changes to F8 raw runs.
+Normalized production storage was 86 MiB.
+
+The accepted backend artifact was built from commit
+`81fabf8173dd4526eebf50ccfffd8a490282da00`. All twelve normalization endpoints, raw
+metric endpoints, grid and catalog regressions passed. The all-metric production scoring
+request covered 36,292 cells in 1.111 seconds cold and 0.313 seconds warm, with the same
+deterministic signature as rehearsal:
+`d21049dc6d51bee82b94551dcc9cd9b94f98d84c3bacff888611eb577e6ed588`.
+
+The pre-rollout recovery point is
+`/private/tmp/kartaspb-f9-pre-20261007T102500Z.dump` (329,101,291 bytes; SHA-256
+`a267006bc065b2b52936b6ea1d3c5a408de457ca4abb609ce93136f88273afce`), validated with
+`pg_restore --list`. The previous backend image and stopped container remain available as
+rollback checkpoints. F9 is complete; F10 has not started.

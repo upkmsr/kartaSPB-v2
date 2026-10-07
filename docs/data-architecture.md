@@ -137,8 +137,9 @@ bootstrap.
 Revision `20261005_0014` adds the three universal F9 normalized-score publication tables
 and append-only history guards. Normalization definitions remain versioned configuration,
 not columns on the F8 raw metric contract. Combined explicit-weight scores are calculated
-on demand and are not persisted. Applying 0014 and publishing normalized production runs
-requires a separate production authorization.
+on demand and are not persisted. The authorized production rollout applied 0014 and
+published twelve current normalized runs covering all 36,292 analysis cells; F8 raw metric
+history and existing catalog/domain/UPI data remained unchanged.
 # Category Engine (FOUNDATION 3B)
 
 The canonical catalog remains provider-independent. Category definitions live in
