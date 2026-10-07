@@ -2,6 +2,7 @@ from app.db.models import (
     AnalysisCell,
     CatalogObject,
     CatalogRelationship,
+    CellMetricScore,
     CellMetricValue,
     DatasetSource,
     District,
@@ -11,6 +12,8 @@ from app.db.models import (
     ImportRunStatus,
     MetricCurrentRun,
     MetricRun,
+    MetricScoreCurrentRun,
+    MetricScoreRun,
     ObjectSource,
     OsmProfileMembership,
     OsmRelationGeometry,
@@ -73,6 +76,26 @@ def test_metric_models_separate_history_values_and_current_pointer() -> None:
         "metric_key",
         "grid_version",
     }
+
+
+def test_metric_score_models_separate_history_values_and_current_pointer() -> None:
+    assert MetricScoreRun.__table__.schema == "analytics"
+    assert CellMetricScore.__table__.schema == "analytics"
+    assert MetricScoreCurrentRun.__table__.schema == "analytics"
+    assert {column.name for column in MetricScoreRun.__table__.columns} >= {
+        "score_run_id",
+        "metric_run_id",
+        "normalization_snapshot",
+        "run_signature",
+        "values_checksum",
+    }
+    assert {column.name for column in CellMetricScore.__table__.primary_key.columns} == {
+        "score_run_id",
+        "cell_id",
+    }
+    assert {
+        column.name for column in MetricScoreCurrentRun.__table__.primary_key.columns
+    } == {"metric_key", "grid_version"}
 
 
 def test_dataset_source_model_uses_meta_schema() -> None:

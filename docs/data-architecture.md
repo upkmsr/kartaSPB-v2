@@ -133,6 +133,12 @@ no data generation.
 Revision `20261004_0013` adds the three F7 metric publication tables and append-only
 guards. It contains no metric definitions and performs no metric calculation or data
 bootstrap.
+
+Revision `20261005_0014` adds the three universal F9 normalized-score publication tables
+and append-only history guards. Normalization definitions remain versioned configuration,
+not columns on the F8 raw metric contract. Combined explicit-weight scores are calculated
+on demand and are not persisted. Applying 0014 and publishing normalized production runs
+requires a separate production authorization.
 # Category Engine (FOUNDATION 3B)
 
 The canonical catalog remains provider-independent. Category definitions live in

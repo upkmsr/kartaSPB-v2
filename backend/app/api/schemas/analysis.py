@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AnalysisGridDistrictCount(BaseModel):
@@ -45,3 +45,40 @@ class CurrentMetricRunPublic(BaseModel):
     mean_value: float
     values_checksum: str
     created_at: datetime
+
+
+class NormalizationPointPublic(BaseModel):
+    raw_value: float
+    score: float
+
+
+class NormalizationDefinitionPublic(BaseModel):
+    metric_key: str
+    normalization_version: str
+    label: str
+    method: str
+    points: list[NormalizationPointPublic]
+    checksum: str
+
+
+class ScoreEvaluationRequest(BaseModel):
+    grid_version: str | None = None
+    weights: dict[str, float]
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class ScoredCellPublic(BaseModel):
+    cell_id: str
+    score: float
+    district_id: UUID
+
+
+class ScoreEvaluationPublic(BaseModel):
+    grid_version: str
+    weights: dict[str, float]
+    scoring_signature: str
+    cell_count: int
+    min: float
+    max: float
+    mean: float
+    top_cells: list[ScoredCellPublic]

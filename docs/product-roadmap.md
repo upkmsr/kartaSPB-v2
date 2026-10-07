@@ -17,5 +17,7 @@ next product stages.
 
 F7 provides only the versioned definition, provider, immutable run/value, current-pointer,
 CLI, and read-API contracts. F8 adds and publishes the twelve accepted catalog-derived
-raw metrics using two reusable spatial providers. F9 is the next stage and owns
-normalization and scoring; it has not started.
+raw metrics using two reusable spatial providers. F9 implementation and isolated rehearsal
+are complete: versioned piecewise-linear normalization, immutable normalized runs, and
+explicit-weight on-demand scoring are ready for a separately authorized production rollout.
+F9 is not marked DONE until that rollout passes. F10 has not started.

@@ -1,0 +1,112 @@
+{
+  "normalizations": [
+    {
+      "metric_key": "education.school.distance_m",
+      "normalization_version": "1",
+      "label": "Доступность школы",
+      "method": "piecewise_linear",
+      "points": [[0, 100], [500, 100], [1000, 75], [1500, 50], [2500, 20], [4000, 0]],
+      "enabled": true,
+      "notes": "Product default v1; lower distance is better."
+    },
+    {
+      "metric_key": "education.school.count_1000m",
+      "normalization_version": "1",
+      "label": "Выбор школ в радиусе 1 км",
+      "method": "piecewise_linear",
+      "points": [[0, 0], [1, 50], [2, 65], [3, 75], [5, 90], [8, 100]],
+      "enabled": true,
+      "notes": "Product default v1; higher count is better."
+    },
+    {
+      "metric_key": "education.kindergarten.distance_m",
+      "normalization_version": "1",
+      "label": "Доступность детского сада",
+      "method": "piecewise_linear",
+      "points": [[0, 100], [300, 100], [700, 80], [1200, 50], [2000, 20], [3000, 0]],
+      "enabled": true,
+      "notes": "Product default v1; lower distance is better."
+    },
+    {
+      "metric_key": "education.kindergarten.count_1000m",
+      "normalization_version": "1",
+      "label": "Выбор детских садов в радиусе 1 км",
+      "method": "piecewise_linear",
+      "points": [[0, 0], [1, 40], [2, 55], [4, 75], [6, 90], [10, 100]],
+      "enabled": true,
+      "notes": "Product default v1; higher count is better."
+    },
+    {
+      "metric_key": "healthcare.hospital.distance_m",
+      "normalization_version": "1",
+      "label": "Доступность больницы",
+      "method": "piecewise_linear",
+      "points": [[0, 100], [1000, 100], [2500, 80], [5000, 50], [8000, 20], [12000, 0]],
+      "enabled": true,
+      "notes": "Product default v1; lower distance is better."
+    },
+    {
+      "metric_key": "healthcare.clinic.distance_m",
+      "normalization_version": "1",
+      "label": "Доступность поликлиники",
+      "method": "piecewise_linear",
+      "points": [[0, 100], [500, 100], [1000, 80], [2000, 50], [4000, 20], [8000, 0]],
+      "enabled": true,
+      "notes": "Product default v1; lower distance is better."
+    },
+    {
+      "metric_key": "healthcare.pharmacy.distance_m",
+      "normalization_version": "1",
+      "label": "Доступность аптеки",
+      "method": "piecewise_linear",
+      "points": [[0, 100], [300, 100], [600, 80], [1000, 55], [2000, 20], [3000, 0]],
+      "enabled": true,
+      "notes": "Product default v1; lower distance is better."
+    },
+    {
+      "metric_key": "healthcare.pharmacy.count_1000m",
+      "normalization_version": "1",
+      "label": "Выбор аптек в радиусе 1 км",
+      "method": "piecewise_linear",
+      "points": [[0, 0], [1, 45], [2, 60], [4, 80], [8, 95], [12, 100]],
+      "enabled": true,
+      "notes": "Product default v1; higher count is better."
+    },
+    {
+      "metric_key": "nature.park.distance_m",
+      "normalization_version": "1",
+      "label": "Доступность парка",
+      "method": "piecewise_linear",
+      "points": [[0, 100], [300, 100], [600, 85], [1000, 65], [1500, 40], [2500, 15], [4000, 0]],
+      "enabled": true,
+      "notes": "Product default v1; lower distance is better."
+    },
+    {
+      "metric_key": "nature.water.distance_m",
+      "normalization_version": "1",
+      "label": "Близость к воде",
+      "method": "piecewise_linear",
+      "points": [[0, 100], [300, 100], [800, 80], [1500, 50], [3000, 20], [5000, 0]],
+      "enabled": true,
+      "notes": "Optional water-proximity utility; it is not implicitly included in a score."
+    },
+    {
+      "metric_key": "transport.stop.distance_m",
+      "normalization_version": "1",
+      "label": "Доступность остановки",
+      "method": "piecewise_linear",
+      "points": [[0, 100], [200, 100], [400, 85], [600, 65], [1000, 30], [1500, 0]],
+      "enabled": true,
+      "notes": "Product default v1; lower distance is better."
+    },
+    {
+      "metric_key": "transport.stop.count_500m",
+      "normalization_version": "1",
+      "label": "Выбор остановок в радиусе 500 м",
+      "method": "piecewise_linear",
+      "points": [[0, 0], [1, 30], [3, 50], [5, 65], [10, 85], [20, 100]],
+      "enabled": true,
+      "notes": "Product default v1; higher count is better."
+    }
+  ]
+}

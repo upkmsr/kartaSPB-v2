@@ -151,3 +151,93 @@ class MetricCurrentRun(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class MetricScoreRun(Base):
+    __tablename__ = "metric_score_runs"
+    __table_args__ = (
+        CheckConstraint("btrim(metric_key) <> ''", name="metric_key_not_blank"),
+        CheckConstraint("btrim(grid_version) <> ''", name="grid_version_not_blank"),
+        CheckConstraint("cell_count > 0", name="cell_count_positive"),
+        CheckConstraint(
+            "normalization_checksum ~ '^[0-9a-f]{64}$'", name="normalization_checksum"
+        ),
+        CheckConstraint("run_signature ~ '^[0-9a-f]{64}$'", name="run_signature"),
+        CheckConstraint("values_checksum ~ '^[0-9a-f]{64}$'", name="values_checksum"),
+        CheckConstraint("score_min >= 0", name="score_min_nonnegative"),
+        CheckConstraint("score_max <= 100", name="score_max_at_most_100"),
+        CheckConstraint("score_min <= score_mean", name="score_min_le_mean"),
+        CheckConstraint("score_mean <= score_max", name="score_mean_le_max"),
+        UniqueConstraint("run_signature"),
+        Index(
+            "ix_analytics_metric_score_runs_metric_grid", "metric_key", "grid_version"
+        ),
+        {"schema": "analytics"},
+    )
+
+    score_run_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    metric_key: Mapped[str] = mapped_column(String(200))
+    grid_version: Mapped[str] = mapped_column(String(100))
+    metric_run_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("analytics.metric_runs.run_id", ondelete="RESTRICT"),
+    )
+    normalization_version: Mapped[str] = mapped_column(String(100))
+    normalization_checksum: Mapped[str] = mapped_column(CHAR(64))
+    normalization_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
+    run_signature: Mapped[str] = mapped_column(CHAR(64))
+    cell_count: Mapped[int] = mapped_column(Integer())
+    score_min: Mapped[float] = mapped_column(Float())
+    score_max: Mapped[float] = mapped_column(Float())
+    score_mean: Mapped[float] = mapped_column(Float())
+    values_checksum: Mapped[str] = mapped_column(CHAR(64))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class CellMetricScore(Base):
+    __tablename__ = "cell_metric_scores"
+    __table_args__ = (
+        CheckConstraint(
+            "score = score AND score NOT IN "
+            "('Infinity'::double precision, '-Infinity'::double precision)",
+            name="score_finite",
+        ),
+        CheckConstraint("score >= 0 AND score <= 100", name="score_in_range"),
+        Index("ix_analytics_cell_metric_scores_cell_id", "cell_id"),
+        {"schema": "analytics"},
+    )
+
+    score_run_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("analytics.metric_score_runs.score_run_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    cell_id: Mapped[str] = mapped_column(
+        ForeignKey("analytics.analysis_cells.cell_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    score: Mapped[float] = mapped_column(Float())
+
+
+class MetricScoreCurrentRun(Base):
+    __tablename__ = "metric_score_current_runs"
+    __table_args__ = (UniqueConstraint("score_run_id"), {"schema": "analytics"})
+
+    metric_key: Mapped[str] = mapped_column(String(200), primary_key=True)
+    grid_version: Mapped[str] = mapped_column(String(100), primary_key=True)
+    score_run_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("analytics.metric_score_runs.score_run_id", ondelete="RESTRICT"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

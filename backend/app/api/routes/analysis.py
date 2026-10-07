@@ -4,10 +4,17 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, st
 
 from app.analytics.grid import GRID_VERSION
 from app.analytics.metrics.registry import MetricRegistry
+from app.analytics.scoring.contracts import NormalizationDefinition
+from app.analytics.scoring.engine import ScoringError, ScoringService
+from app.analytics.scoring.registry import NormalizationRegistry
 from app.api.schemas.analysis import (
     AnalysisGridMeta,
     CurrentMetricRunPublic,
     MetricDefinitionPublic,
+    NormalizationDefinitionPublic,
+    NormalizationPointPublic,
+    ScoreEvaluationPublic,
+    ScoreEvaluationRequest,
 )
 from app.data.analysis_grid import AnalysisGridService
 from app.data.metrics import MetricQueryService
@@ -26,6 +33,14 @@ def get_metric_registry() -> MetricRegistry:
 
 def get_metric_query_service() -> MetricQueryService:
     return MetricQueryService(get_engine())
+
+
+def get_normalization_registry() -> NormalizationRegistry:
+    return NormalizationRegistry.load()
+
+
+def get_scoring_service() -> ScoringService:
+    return ScoringService(get_engine(), get_normalization_registry())
 
 
 def _public_definition(definition: object) -> MetricDefinitionPublic:
@@ -92,3 +107,61 @@ def current_metric_run(
             status_code=status.HTTP_404_NOT_FOUND, detail="Current metric run not found"
         )
     return CurrentMetricRunPublic.model_validate(run, from_attributes=True)
+
+
+def _public_normalization(
+    definition: NormalizationDefinition,
+) -> NormalizationDefinitionPublic:
+    return NormalizationDefinitionPublic(
+        metric_key=definition.metric_key,
+        normalization_version=definition.normalization_version,
+        label=definition.label,
+        method=str(definition.method),
+        points=[
+            NormalizationPointPublic(raw_value=point.raw_value, score=point.score)
+            for point in definition.points
+        ],
+        checksum=definition.checksum(),
+    )
+
+
+@router.get(
+    "/scoring/normalizations", response_model=list[NormalizationDefinitionPublic]
+)
+def list_normalizations(
+    registry: Annotated[NormalizationRegistry, Depends(get_normalization_registry)],
+) -> list[NormalizationDefinitionPublic]:
+    return [_public_normalization(definition) for definition in registry.list()]
+
+
+@router.get(
+    "/scoring/normalizations/{metric_key}", response_model=NormalizationDefinitionPublic
+)
+def normalization_definition(
+    metric_key: str,
+    registry: Annotated[NormalizationRegistry, Depends(get_normalization_registry)],
+) -> NormalizationDefinitionPublic:
+    definition = registry.get(metric_key)
+    if definition is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Normalization not found"
+        )
+    return _public_normalization(definition)
+
+
+@router.post("/scoring/evaluate", response_model=ScoreEvaluationPublic)
+def evaluate_score(
+    request: ScoreEvaluationRequest,
+    service: Annotated[ScoringService, Depends(get_scoring_service)],
+) -> ScoreEvaluationPublic:
+    try:
+        result = service.evaluate(
+            request.grid_version or GRID_VERSION,
+            request.weights,
+            limit=request.limit,
+        )
+    except ScoringError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return ScoreEvaluationPublic.model_validate(result.to_dict())
