@@ -8,6 +8,7 @@ import type {
 } from "../map/mapTypes";
 import { ObjectCard } from "./ObjectCard";
 import type { MapSelection } from "../map/layerContract";
+import type { PreparedHeatmap } from "../api/heatmap";
 
 export type MapWorkspaceProps = {
   visibleLayerIds: ReadonlySet<string>;
@@ -16,10 +17,12 @@ export type MapWorkspaceProps = {
   districtIds: readonly string[];
   navigationRequest: MapNavigationRequest | null;
   objectSelection: { id: string; origin: "map" | "search" } | null;
+  activeHeatmap?: PreparedHeatmap | null;
   onObjectSelect: (objectId: string) => void;
   onObjectClose: () => void;
   onZoomChange: (zoom: number) => void;
   onMapRequestStateChange: (state: MapRequestState) => void;
+  onHeatmapError?: () => void;
 };
 
 const RequestStatus = ({ state }: { state: MapRequestState }) => {
@@ -56,10 +59,12 @@ export function MapWorkspace({
   districtIds,
   navigationRequest,
   objectSelection,
+  activeHeatmap = null,
   onObjectSelect,
   onObjectClose,
   onZoomChange,
   onMapRequestStateChange,
+  onHeatmapError = () => undefined,
 }: MapWorkspaceProps) {
   const [requestState, setRequestState] = useState<MapRequestState>({ status: "idle" });
   const [cardState, setCardState] = useState<ObjectCardState>({ status: "closed" });
@@ -133,10 +138,12 @@ export function MapWorkspace({
         districtIds={districtIds}
         navigationRequest={navigationRequest}
         selectedFeatureId={selectedObjectId}
+        activeHeatmap={activeHeatmap}
         onSelection={handleMapSelection}
         onVisibleFeatureIdsChange={handleVisibleFeatureIds}
         onRequestStateChange={handleRequestStateChange}
         onZoomChange={onZoomChange}
+        onHeatmapError={onHeatmapError}
       />
       <RequestStatus state={requestState} />
       <ObjectCard state={cardState} onClose={closeCard} />

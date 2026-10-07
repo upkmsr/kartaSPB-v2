@@ -7,6 +7,7 @@ import {
 } from "./api/districts";
 import { fetchReadiness } from "./api/health";
 import type { SearchResult } from "./api/search";
+import type { PreparedHeatmap } from "./api/heatmap";
 import type { DistrictLoadState } from "./components/DistrictSection";
 import { MapWorkspace } from "./components/MapWorkspace";
 import { Sidebar } from "./components/Sidebar";
@@ -44,6 +45,8 @@ export function App() {
   const [navigationRequest, setNavigationRequest] = useState<MapNavigationRequest | null>(null);
   const [objectSelection, setObjectSelection] = useState<ObjectSelection | null>(null);
   const [selectedSearchResultId, setSelectedSearchResultId] = useState<string | null>(null);
+  const [activeHeatmap, setActiveHeatmap] = useState<PreparedHeatmap | null>(null);
+  const [heatmapTileError, setHeatmapTileError] = useState<string | null>(null);
   const navigationSequenceRef = useRef(0);
   const visibleLayerIds = loadingSettings.visibleLayerIds;
 
@@ -162,6 +165,8 @@ export function App() {
           mapRequestState={mapRequestState}
           searchCategoryKeys={searchCategoryKeys}
           selectedSearchResultId={selectedSearchResultId}
+          activeHeatmap={activeHeatmap}
+          heatmapTileError={heatmapTileError}
           zoom={zoom}
           onExpandedChange={setSidebarExpanded}
           onDistrictToggle={toggleDistrict}
@@ -176,6 +181,14 @@ export function App() {
           onLoadObjects={() => setManualLoadSequence((sequence) => sequence + 1)}
           onResetLoadingSettings={() => setLoadingSettings(defaultMapLoadingSettings())}
           onSearchResultActivate={activateSearchResult}
+          onHeatmapPrepared={(heatmap) => {
+            setHeatmapTileError(null);
+            setActiveHeatmap(heatmap);
+          }}
+          onHeatmapHide={() => {
+            setHeatmapTileError(null);
+            setActiveHeatmap(null);
+          }}
         />
 
         <MapWorkspace
@@ -185,6 +198,7 @@ export function App() {
           districtIds={districtIds}
           navigationRequest={navigationRequest}
           objectSelection={objectSelection}
+          activeHeatmap={activeHeatmap}
           onObjectSelect={(id) => {
             setSelectedSearchResultId(null);
             setObjectSelection({ id, origin: "map" });
@@ -195,6 +209,9 @@ export function App() {
           }}
           onZoomChange={setZoom}
           onMapRequestStateChange={setMapRequestState}
+          onHeatmapError={() =>
+            setHeatmapTileError("Не удалось загрузить тайлы тепловой карты")
+          }
         />
       </div>
 

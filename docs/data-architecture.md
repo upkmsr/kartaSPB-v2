@@ -32,8 +32,16 @@ not store catalog objects, source evidence, metrics, scores, or user state. See
 
 F7 adds immutable metric runs and raw cell values plus an atomic mutable current pointer.
 Definitions remain declarative and providers remain separate from persistence. Production
-contains no real metric definitions in F7; normalization, scoring, heatmaps, and scenarios
-are later stages. See [metric-engine.md](metric-engine.md).
+contains no real metric definitions in F7. F8 publishes the twelve accepted catalog-derived
+raw metrics, and F9 publishes versioned normalized scores while calculating explicit-weight
+composites on demand. See [metric-engine.md](metric-engine.md),
+[existing-data-metrics.md](existing-data-metrics.md), and
+[scoring-engine.md](scoring-engine.md).
+
+F10 adds no table or persisted composite. It resolves a requested weight map to exact
+immutable F9 score runs, encodes that historical plan in a bounded opaque spec, and serves
+spatial-first MVT tiles. This keeps delivery and MapLibre rendering outside the canonical,
+domain, and publication schemas. See [heatmap.md](heatmap.md).
 
 ## Source registry
 
@@ -140,6 +148,10 @@ not columns on the F8 raw metric contract. Combined explicit-weight scores are c
 on demand and are not persisted. The authorized production rollout applied 0014 and
 published twelve current normalized runs covering all 36,292 analysis cells; F8 raw metric
 history and existing catalog/domain/UPI data remained unchanged.
+
+F10 requires no Alembic revision. Its prepare response and tile spec are stateless;
+existing F8/F9 immutable rows remain the only analytical inputs and user scenarios remain
+deferred to F11.
 # Category Engine (FOUNDATION 3B)
 
 The canonical catalog remains provider-independent. Category definitions live in

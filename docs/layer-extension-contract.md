@@ -1,8 +1,10 @@
 # Layer extension contract
 
 F5.5-S7 separates a layer's meaning from its transport, loading lifecycle, rendering,
-and selection behavior. F6 retains the ten catalog layers and adds one real derived
-analysis layer; the other examples below remain declarative, test-only extension proofs.
+and selection behavior. F6 retains the ten catalog layers and adds one static derived
+analysis layer. F10 adds a parameterized dynamic derived-analysis overlay whose immutable
+tile source is installed only after an explicit prepare action; the other examples below
+remain declarative, test-only extension proofs.
 
 ## Contract dimensions
 
@@ -77,6 +79,13 @@ group (`Аналитика`). It uses derived vector tiles from
 `/api/analysis/grid/tiles/{z}/{x}/{y}.mvt`, source layer `analysis_grid`, minimum zoom 11,
 and default off. It is non-selectable, district-scope agnostic, and MapLibre-native, so
 it never enters catalog aggregation or the S6 auto/manual loading state.
+
+The F10 heatmap is not a twelfth static registry declaration. It is a runtime
+`derived-analysis` overlay because its source URL is parameterized by a deterministic F9
+scoring signature and an immutable historical-run spec. It is default off, non-selectable,
+MapLibre-native, independent of district/catalog loading, and visible from zoom 10. Its
+fill is installed below both the optional grid outline and catalog layers. Style reload
+reinstalls the active source and layer without preparing a different score plan.
 
 District UUIDs are sent only to the catalog request. Other sources explicitly declare
 whether district scope is ignored or managed by that source. The selected-district
@@ -204,7 +213,8 @@ const derivedAnalysis = {
 
 Executable extension proofs for all five classes and transport types live in
 `layerContract.test.ts` and `layerRuntime.test.ts`; the F6 analysis grid is the first
-production `derived-analysis` vector-tile declaration.
+production static `derived-analysis` vector-tile declaration. F10's parameterized overlay
+lifecycle is covered separately by `heatmapOverlay.test.ts`.
 
 ## Registry validation
 

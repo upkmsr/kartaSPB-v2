@@ -3,6 +3,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 
 from app.analytics.grid import GRID_VERSION
+from app.analytics.heatmap import (
+    HEATMAP_DELIVERY_VERSION,
+    HeatmapError,
+    HeatmapService,
+)
 from app.analytics.metrics.registry import MetricRegistry
 from app.analytics.scoring.contracts import NormalizationDefinition
 from app.analytics.scoring.engine import ScoringError, ScoringService
@@ -10,6 +15,8 @@ from app.analytics.scoring.registry import NormalizationRegistry
 from app.api.schemas.analysis import (
     AnalysisGridMeta,
     CurrentMetricRunPublic,
+    HeatmapPreparePublic,
+    HeatmapPrepareRequest,
     MetricDefinitionPublic,
     NormalizationDefinitionPublic,
     NormalizationPointPublic,
@@ -41,6 +48,11 @@ def get_normalization_registry() -> NormalizationRegistry:
 
 def get_scoring_service() -> ScoringService:
     return ScoringService(get_engine(), get_normalization_registry())
+
+
+def get_heatmap_service() -> HeatmapService:
+    engine = get_engine()
+    return HeatmapService(engine, ScoringService(engine, get_normalization_registry()))
 
 
 def _public_definition(definition: object) -> MetricDefinitionPublic:
@@ -165,3 +177,52 @@ def evaluate_score(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
     return ScoreEvaluationPublic.model_validate(result.to_dict())
+
+
+@router.post("/heatmap/prepare", response_model=HeatmapPreparePublic)
+def prepare_heatmap(
+    request: HeatmapPrepareRequest,
+    service: Annotated[HeatmapService, Depends(get_heatmap_service)],
+) -> HeatmapPreparePublic:
+    try:
+        prepared = service.prepare(request.grid_version or GRID_VERSION, request.weights)
+    except HeatmapError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return HeatmapPreparePublic.model_validate(prepared.to_dict())
+
+
+@router.get("/heatmap/tiles/{scoring_signature}/{z}/{x}/{y}.mvt")
+def heatmap_tile(
+    scoring_signature: Annotated[
+        str, Path(min_length=64, max_length=64, pattern="^[0-9a-f]{64}$")
+    ],
+    z: Annotated[int, Path(ge=0, le=22)],
+    x: Annotated[int, Path(ge=0)],
+    y: Annotated[int, Path(ge=0)],
+    spec: Annotated[str, Query(min_length=1, max_length=8192)],
+    service: Annotated[HeatmapService, Depends(get_heatmap_service)],
+) -> Response:
+    tile_limit = 1 << z
+    if x >= tile_limit or y >= tile_limit:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Tile coordinate is outside the zoom extent",
+        )
+    try:
+        tile = service.tile(scoring_signature, z, x, y, spec)
+    except HeatmapError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return Response(
+        content=tile.payload,
+        media_type="application/vnd.mapbox-vector-tile",
+        headers={
+            "Cache-Control": "public, max-age=86400, immutable",
+            "ETag": f'"{tile.etag}"',
+            "X-KARTASPB-Scoring-Signature": tile.scoring_signature,
+            "X-KARTASPB-Heatmap-Version": HEATMAP_DELIVERY_VERSION,
+        },
+    )

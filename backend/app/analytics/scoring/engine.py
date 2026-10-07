@@ -22,6 +22,27 @@ class ScoredCell:
 
 
 @dataclass(frozen=True)
+class ScoringMetric:
+    metric_key: str
+    score_run_id: UUID
+    run_signature: str
+    weight: float
+
+
+@dataclass(frozen=True)
+class ScoringPlan:
+    grid_version: str
+    metrics: tuple[ScoringMetric, ...]
+    scoring_signature: str
+    cell_count: int
+    total_weight: float
+
+    @property
+    def weights(self) -> dict[str, float]:
+        return {metric.metric_key: metric.weight for metric in self.metrics}
+
+
+@dataclass(frozen=True)
 class ScoringResult:
     grid_version: str
     weights: dict[str, float]
@@ -80,17 +101,13 @@ class ScoringService:
         self._engine = engine
         self._registry = registry
 
-    def evaluate(
+    def resolve_current_plan(
         self,
         grid_version: str,
         weights: dict[str, float],
-        *,
-        limit: int = 20,
-    ) -> ScoringResult:
+    ) -> ScoringPlan:
         if not grid_version.strip():
             raise ScoringError("grid_version must not be blank")
-        if not 1 <= limit <= 100:
-            raise ScoringError("limit must be between 1 and 100")
         selected_weights = validate_weights(weights, self._registry)
         metric_keys = tuple(selected_weights)
         with self._engine.connect() as connection:
@@ -127,64 +144,142 @@ class ScoringService:
                     "current normalized score run does not match enabled normalization: "
                     + ", ".join(stale)
                 )
-            cell_counts = {int(row["cell_count"]) for row in rows}
-            if len(cell_counts) != 1 or any(
-                int(row["actual_count"]) != int(row["cell_count"]) for row in rows
-            ):
-                raise ScoringError("normalized score run is incomplete")
+        return self._build_plan(grid_version, selected_weights, by_key)
 
-            signature_payload = {
-                "grid_version": grid_version,
-                "metrics": [
-                    {
-                        "metric_key": key,
-                        "run_signature": by_key[key]["run_signature"],
-                        "weight": selected_weights[key].hex(),
-                    }
-                    for key in metric_keys
-                ],
-            }
-            canonical = json.dumps(signature_payload, sort_keys=True, separators=(",", ":"))
-            signature = hashlib.sha256(canonical.encode()).hexdigest()
-            params: dict[str, object] = {
-                "grid_version": grid_version,
-                "total_weight": math.fsum(selected_weights.values()),
-                "limit": limit,
-            }
-            value_rows: list[str] = []
-            for index, key in enumerate(metric_keys):
-                value_rows.append(
-                    f"(CAST(:run_{index} AS uuid), CAST(:weight_{index} AS double precision))"
-                )
-                params[f"run_{index}"] = str(by_key[key]["score_run_id"])
-                params[f"weight_{index}"] = selected_weights[key]
-            query = text(
-                "WITH selected(score_run_id, weight) AS (VALUES "
-                + ",".join(value_rows)
-                + "), scored AS ("
-                "SELECT s.cell_id, a.district_id, "
-                "sum(s.score * selected.weight) / :total_weight AS score "
-                "FROM selected JOIN analytics.cell_metric_scores AS s "
-                "ON s.score_run_id = selected.score_run_id "
-                "JOIN analytics.analysis_cells AS a ON a.cell_id = s.cell_id "
-                "WHERE a.grid_version = :grid_version "
-                "GROUP BY s.cell_id, a.district_id"
-                "), summarized AS ("
-                "SELECT cell_id, district_id, score, count(*) OVER () AS cell_count, "
-                "min(score) OVER () AS minimum, max(score) OVER () AS maximum, "
-                "avg(score) OVER () AS mean FROM scored"
-                ") SELECT * FROM summarized ORDER BY score DESC, cell_id LIMIT :limit"
+    def resolve_historical_plan(
+        self,
+        grid_version: str,
+        weights: dict[str, float],
+        score_run_ids: dict[str, UUID],
+    ) -> ScoringPlan:
+        if not grid_version.strip():
+            raise ScoringError("grid_version must not be blank")
+        selected_weights = validate_weights(weights, self._registry)
+        if set(selected_weights) != set(score_run_ids):
+            raise ScoringError("score run keys must match selected weight keys")
+        run_ids = tuple(score_run_ids[key] for key in selected_weights)
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT r.metric_key, r.score_run_id, r.run_signature, r.cell_count, "
+                    "r.grid_version, count(s.cell_id) AS actual_count "
+                    "FROM analytics.metric_score_runs AS r "
+                    "LEFT JOIN analytics.cell_metric_scores AS s "
+                    "ON s.score_run_id = r.score_run_id "
+                    "WHERE r.score_run_id IN :run_ids "
+                    "GROUP BY r.metric_key, r.score_run_id, r.run_signature, "
+                    "r.cell_count, r.grid_version"
+                ).bindparams(bindparam("run_ids", expanding=True)),
+                {"run_ids": run_ids},
+            ).mappings().all()
+        by_id = {row["score_run_id"]: row for row in rows}
+        by_key: dict[str, Any] = {}
+        for metric_key, score_run_id in score_run_ids.items():
+            row = by_id.get(score_run_id)
+            if row is None:
+                raise ScoringError(f"normalized score run not found: {score_run_id}")
+            if row["metric_key"] != metric_key:
+                raise ScoringError(f"normalized score run does not belong to metric: {metric_key}")
+            if row["grid_version"] != grid_version:
+                raise ScoringError("normalized score run belongs to a different grid")
+            by_key[metric_key] = row
+        return self._build_plan(grid_version, selected_weights, by_key)
+
+    @staticmethod
+    def _build_plan(
+        grid_version: str,
+        selected_weights: dict[str, float],
+        by_key: dict[str, Any],
+    ) -> ScoringPlan:
+        metric_keys = tuple(selected_weights)
+        cell_counts = {int(by_key[key]["cell_count"]) for key in metric_keys}
+        if len(cell_counts) != 1 or any(
+            int(by_key[key]["actual_count"]) != int(by_key[key]["cell_count"])
+            for key in metric_keys
+        ):
+            raise ScoringError("normalized score run is incomplete")
+        metrics = tuple(
+            ScoringMetric(
+                metric_key=key,
+                score_run_id=by_key[key]["score_run_id"],
+                run_signature=by_key[key]["run_signature"],
+                weight=selected_weights[key],
             )
+            for key in metric_keys
+        )
+        signature_payload = {
+            "grid_version": grid_version,
+            "metrics": [
+                {
+                    "metric_key": metric.metric_key,
+                    "run_signature": metric.run_signature,
+                    "weight": metric.weight.hex(),
+                }
+                for metric in metrics
+            ],
+        }
+        canonical = json.dumps(signature_payload, sort_keys=True, separators=(",", ":"))
+        return ScoringPlan(
+            grid_version=grid_version,
+            metrics=metrics,
+            scoring_signature=hashlib.sha256(canonical.encode()).hexdigest(),
+            cell_count=next(iter(cell_counts)),
+            total_weight=math.fsum(selected_weights.values()),
+        )
+
+    def evaluate(
+        self,
+        grid_version: str,
+        weights: dict[str, float],
+        *,
+        limit: int = 20,
+    ) -> ScoringResult:
+        plan = self.resolve_current_plan(grid_version, weights)
+        return self.evaluate_plan(plan, limit=limit)
+
+    def evaluate_plan(self, plan: ScoringPlan, *, limit: int = 20) -> ScoringResult:
+        if not 1 <= limit <= 100:
+            raise ScoringError("limit must be between 1 and 100")
+        params: dict[str, object] = {
+            "grid_version": plan.grid_version,
+            "total_weight": plan.total_weight,
+            "limit": limit,
+        }
+        value_rows: list[str] = []
+        for index, metric in enumerate(plan.metrics):
+            value_rows.append(
+                f"(CAST(:run_{index} AS uuid), CAST(:weight_{index} AS double precision))"
+            )
+            params[f"run_{index}"] = str(metric.score_run_id)
+            params[f"weight_{index}"] = metric.weight
+        query = text(
+            "WITH selected(score_run_id, weight) AS (VALUES "
+            + ",".join(value_rows)
+            + "), scored AS ("
+            "SELECT s.cell_id, a.district_id, "
+            "sum(s.score * selected.weight) / :total_weight AS score "
+            "FROM selected JOIN analytics.cell_metric_scores AS s "
+            "ON s.score_run_id = selected.score_run_id "
+            "JOIN analytics.analysis_cells AS a ON a.cell_id = s.cell_id "
+            "WHERE a.grid_version = :grid_version "
+            "GROUP BY s.cell_id, a.district_id"
+            "), summarized AS ("
+            "SELECT cell_id, district_id, score, count(*) OVER () AS cell_count, "
+            "min(score) OVER () AS minimum, max(score) OVER () AS maximum, "
+            "avg(score) OVER () AS mean FROM scored"
+            ") SELECT * FROM summarized ORDER BY score DESC, cell_id LIMIT :limit"
+        )
+        with self._engine.connect() as connection:
             result_rows = connection.execute(query, params).mappings().all()
         if not result_rows:
             raise ScoringError("scoring produced no cells")
         first = result_rows[0]
-        if int(first["cell_count"]) != next(iter(cell_counts)):
+        if int(first["cell_count"]) != plan.cell_count:
             raise ScoringError("scoring result is incomplete")
         return ScoringResult(
-            grid_version=grid_version,
-            weights=selected_weights,
-            scoring_signature=signature,
+            grid_version=plan.grid_version,
+            weights=plan.weights,
+            scoring_signature=plan.scoring_signature,
             cell_count=int(first["cell_count"]),
             minimum=float(first["minimum"]),
             maximum=float(first["maximum"]),

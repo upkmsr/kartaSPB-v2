@@ -37,6 +37,12 @@ import {
   type MapNavigationRequest,
   type MapRequestState,
 } from "./mapTypes";
+import type { PreparedHeatmap } from "../api/heatmap";
+import {
+  HEATMAP_LAYER_ID,
+  HEATMAP_SOURCE_ID,
+  updateHeatmapOverlay,
+} from "./heatmapOverlay";
 
 const INITIAL_CENTER: [number, number] = [30.3158, 59.9398];
 const INITIAL_ZOOM = 12;
@@ -72,10 +78,12 @@ export type MapViewProps = {
   districtIds: readonly string[];
   navigationRequest: MapNavigationRequest | null;
   selectedFeatureId: string | null;
+  activeHeatmap?: PreparedHeatmap | null;
   onSelection: (selection: MapSelection) => void;
   onVisibleFeatureIdsChange: (visibleIds: ReadonlySet<string>) => void;
   onRequestStateChange: (state: MapRequestState) => void;
   onZoomChange: (zoom: number) => void;
+  onHeatmapError?: () => void;
 };
 
 export function MapView({
@@ -85,10 +93,12 @@ export function MapView({
   districtIds,
   navigationRequest,
   selectedFeatureId,
+  activeHeatmap = null,
   onSelection,
   onVisibleFeatureIdsChange,
   onRequestStateChange,
   onZoomChange,
+  onHeatmapError = () => undefined,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -96,10 +106,12 @@ export function MapView({
   const autoLoadRef = useRef(autoLoad);
   const districtIdsRef = useRef(districtIds);
   const selectedFeatureIdRef = useRef(selectedFeatureId);
+  const activeHeatmapRef = useRef(activeHeatmap);
   const onSelectionRef = useRef<(selection: MapSelection) => void>(() => undefined);
   const onVisibleFeatureIdsChangeRef = useRef(onVisibleFeatureIdsChange);
   const onRequestStateChangeRef = useRef(onRequestStateChange);
   const onZoomChangeRef = useRef(onZoomChange);
+  const onHeatmapErrorRef = useRef(onHeatmapError);
   const latestDataRef = useRef<CatalogFeatureCollection>(EMPTY_FEATURE_COLLECTION);
   const latestSuccessfulStateRef = useRef<
     Extract<MapRequestState, { status: "ready" | "empty" }> | null
@@ -118,10 +130,12 @@ export function MapView({
   autoLoadRef.current = autoLoad;
   districtIdsRef.current = districtIds;
   selectedFeatureIdRef.current = selectedFeatureId;
+  activeHeatmapRef.current = activeHeatmap;
   onSelectionRef.current = onSelection;
   onVisibleFeatureIdsChangeRef.current = onVisibleFeatureIdsChange;
   onRequestStateChangeRef.current = onRequestStateChange;
   onZoomChangeRef.current = onZoomChange;
+  onHeatmapErrorRef.current = onHeatmapError;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -298,6 +312,13 @@ export function MapView({
           selectedCanonicalId: selectedFeatureIdRef.current,
         },
       );
+      if (activeHeatmapRef.current) {
+        updateHeatmapOverlay(
+          map,
+          activeHeatmapRef.current,
+          orderedRenderDefinitions[0]?.definition.id,
+        );
+      }
       installSelectedDistrictOverlay(
         map,
         latestDistrictDataRef.current,
@@ -314,6 +335,10 @@ export function MapView({
       primaryStyleLoaded = true;
     });
     map.on("error", (event) => {
+      if ((event as unknown as { sourceId?: string }).sourceId === HEATMAP_SOURCE_ID) {
+        onHeatmapErrorRef.current();
+        return;
+      }
       if (primaryStyleUrl && !localFallbackApplied && !primaryStyleLoaded) {
         localFallbackApplied = true;
         map.setStyle(localDarkStyle);
@@ -416,6 +441,18 @@ export function MapView({
     const map = mapRef.current;
     if (map) updateCatalogSelection(map, selectedFeatureId);
   }, [selectedFeatureId]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (activeHeatmap || map.getLayer(HEATMAP_LAYER_ID)) {
+      updateHeatmapOverlay(
+        map,
+        activeHeatmap,
+        orderedRenderDefinitions[0]?.definition.id,
+      );
+    }
+  }, [activeHeatmap]);
 
   return <div ref={containerRef} className="catalog-map" aria-label="Карта Санкт-Петербурга" />;
 }

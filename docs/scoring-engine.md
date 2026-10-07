@@ -122,4 +122,5 @@ The pre-rollout recovery point is
 `/private/tmp/kartaspb-f9-pre-20261007T102500Z.dump` (329,101,291 bytes; SHA-256
 `a267006bc065b2b52936b6ea1d3c5a408de457ca4abb609ce93136f88273afce`), validated with
 `pg_restore --list`. The previous backend image and stopped container remain available as
-rollback checkpoints. F9 is complete; F10 has not started.
+rollback checkpoints. F9 is complete. F10 now consumes these immutable runs without
+changing them; its delivery contract is documented in [heatmap.md](heatmap.md).

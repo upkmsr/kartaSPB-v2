@@ -82,3 +82,21 @@ class ScoreEvaluationPublic(BaseModel):
     max: float
     mean: float
     top_cells: list[ScoredCellPublic]
+
+
+class HeatmapPrepareRequest(BaseModel):
+    grid_version: str | None = None
+    weights: dict[str, float]
+
+
+class HeatmapPreparePublic(BaseModel):
+    grid_version: str
+    weights: dict[str, float]
+    scoring_signature: str
+    spec: str
+    cell_count: int
+    min: float
+    max: float
+    mean: float
+    tile_url_template: str
+    delivery_version: str

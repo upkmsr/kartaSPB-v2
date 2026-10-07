@@ -5,6 +5,8 @@ import { SearchSection } from "./SearchSection";
 import { StatusIndicator } from "./StatusIndicator";
 import type { SearchResult } from "../api/search";
 import type { MapRequestState } from "../map/mapTypes";
+import type { PreparedHeatmap } from "../api/heatmap";
+import { HeatmapControl } from "./HeatmapControl";
 
 type ConnectionState = "checking" | "ready" | "offline";
 
@@ -20,6 +22,8 @@ export type SidebarProps = {
   mapRequestState: MapRequestState;
   searchCategoryKeys: readonly string[];
   selectedSearchResultId: string | null;
+  activeHeatmap: PreparedHeatmap | null;
+  heatmapTileError: string | null;
   zoom: number;
   onExpandedChange: (expanded: boolean) => void;
   onDistrictToggle: (districtId: string) => void;
@@ -32,6 +36,8 @@ export type SidebarProps = {
   onLoadObjects: () => void;
   onResetLoadingSettings: () => void;
   onSearchResultActivate: (result: SearchResult) => void;
+  onHeatmapPrepared: (heatmap: PreparedHeatmap) => void;
+  onHeatmapHide: () => void;
 };
 
 export function Sidebar({
@@ -46,6 +52,8 @@ export function Sidebar({
   mapRequestState,
   searchCategoryKeys,
   selectedSearchResultId,
+  activeHeatmap,
+  heatmapTileError,
   zoom,
   onExpandedChange,
   onDistrictToggle,
@@ -58,6 +66,8 @@ export function Sidebar({
   onLoadObjects,
   onResetLoadingSettings,
   onSearchResultActivate,
+  onHeatmapPrepared,
+  onHeatmapHide,
 }: SidebarProps) {
   return (
     <aside
@@ -97,6 +107,13 @@ export function Sidebar({
             onLocate={onDistrictLocate}
             onLocateSelected={onDistrictLocateSelected}
             onRetry={onDistrictRetry}
+          />
+
+          <HeatmapControl
+            activeHeatmap={activeHeatmap}
+            tileError={heatmapTileError}
+            onPrepared={onHeatmapPrepared}
+            onHide={onHeatmapHide}
           />
 
           <LayerControl

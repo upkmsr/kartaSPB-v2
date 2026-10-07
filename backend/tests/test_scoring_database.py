@@ -1,11 +1,15 @@
+import base64
+import json
 import math
 import os
+from math import asinh, pi, tan
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DBAPIError
 
+from app.analytics.heatmap import HeatmapError, HeatmapService
 from app.analytics.metrics.contracts import MetricDefinition
 from app.analytics.metrics.publisher import publish_metric
 from app.analytics.metrics.registry import MetricRegistry
@@ -154,6 +158,108 @@ def test_normalized_publication_and_weighted_scoring_lifecycle(
     )
     assert unequal.scoring_signature != equal.scoring_signature
     assert 0 <= unequal.minimum <= unequal.mean <= unequal.maximum <= 100
+
+    heatmap = HeatmapService(engine, service)
+    prepared = heatmap.prepare(
+        grid_version, {second_metric.key: 100, first_metric.key: 100}
+    )
+    assert prepared.scoring_signature == equal.scoring_signature
+    assert prepared.spec == heatmap.prepare(
+        grid_version, {first_metric.key: 100, second_metric.key: 100}
+    ).spec
+    with engine.connect() as connection:
+        lon, lat = connection.execute(
+            text(
+                "SELECT ST_X(center), ST_Y(center) FROM analytics.analysis_cells "
+                "WHERE cell_id = :cell_id"
+            ),
+            {"cell_id": cell_ids[0]},
+        ).one()
+        immutable_counts_before = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM analytics.metric_runs), "
+                "(SELECT count(*) FROM analytics.cell_metric_values), "
+                "(SELECT count(*) FROM analytics.metric_score_runs), "
+                "(SELECT count(*) FROM analytics.cell_metric_scores), "
+                "(SELECT count(*) FROM analytics.metric_score_current_runs), "
+                "(SELECT count(*) FROM analytics.analysis_cells)"
+            )
+        ).one()
+    z = 12
+    x = int((lon + 180) / 360 * (1 << z))
+    y = int((1 - asinh(tan(lat * pi / 180)) / pi) / 2 * (1 << z))
+    tile = heatmap.tile(prepared.scoring_signature, z, x, y, prepared.spec)
+    assert tile.payload
+    assert heatmap.tile(prepared.scoring_signature, z, x, y, prepared.spec).payload == tile.payload
+    assert b"analysis_heatmap" in tile.payload
+    assert b"cell_id" in tile.payload
+    assert b"district_id" in tile.payload
+    assert b"score" in tile.payload
+    assert heatmap.tile(prepared.scoring_signature, 12, 0, 0, prepared.spec).payload == b""
+    with pytest.raises(HeatmapError, match="does not match"):
+        heatmap.tile("f" * 64, z, x, y, prepared.spec)
+
+    raw_spec = json.loads(
+        base64.urlsafe_b64decode(prepared.spec + "=" * (-len(prepared.spec) % 4))
+    )
+    raw_spec["metrics"][0]["score_run_id"] = str(uuid4())
+    unknown_run_spec = base64.urlsafe_b64encode(
+        json.dumps(raw_spec, sort_keys=True, separators=(",", ":")).encode()
+    ).rstrip(b"=").decode()
+    with pytest.raises(HeatmapError, match="not found"):
+        heatmap.plan_from_spec(unknown_run_spec)
+
+    raw_spec = json.loads(
+        base64.urlsafe_b64decode(prepared.spec + "=" * (-len(prepared.spec) % 4))
+    )
+    raw_spec["metrics"][0]["score_run_id"], raw_spec["metrics"][1]["score_run_id"] = (
+        raw_spec["metrics"][1]["score_run_id"],
+        raw_spec["metrics"][0]["score_run_id"],
+    )
+    wrong_metric_spec = base64.urlsafe_b64encode(
+        json.dumps(raw_spec, sort_keys=True, separators=(",", ":")).encode()
+    ).rstrip(b"=").decode()
+    with pytest.raises(HeatmapError, match="does not belong"):
+        heatmap.plan_from_spec(wrong_metric_spec)
+
+    prepared_plan = heatmap.plan_from_spec(prepared.spec)
+    selected_sql = ",".join(
+        f"(CAST(:run_{index} AS uuid), CAST(:weight_{index} AS double precision))"
+        for index, _metric in enumerate(prepared_plan.metrics)
+    )
+    score_params: dict[str, object] = {
+        "cell_id": equal.top_cells[0].cell_id,
+        "total_weight": prepared_plan.total_weight,
+    }
+    for index, selected_metric in enumerate(prepared_plan.metrics):
+        score_params[f"run_{index}"] = str(selected_metric.score_run_id)
+        score_params[f"weight_{index}"] = selected_metric.weight
+    with engine.connect() as connection:
+        tile_formula_score = connection.scalar(
+            text(
+                "WITH selected(score_run_id,weight) AS (VALUES "
+                + selected_sql
+                + ") SELECT (sum(score.score::numeric * selected.weight::numeric) / "
+                "CAST(:total_weight AS numeric))::double precision "
+                "FROM analytics.cell_metric_scores score JOIN selected "
+                "ON selected.score_run_id=score.score_run_id "
+                "WHERE score.cell_id=:cell_id"
+            ),
+            score_params,
+        )
+    assert math.isclose(tile_formula_score, equal.top_cells[0].score, abs_tol=1e-12)
+    with engine.connect() as connection:
+        immutable_counts_after = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM analytics.metric_runs), "
+                "(SELECT count(*) FROM analytics.cell_metric_values), "
+                "(SELECT count(*) FROM analytics.metric_score_runs), "
+                "(SELECT count(*) FROM analytics.cell_metric_scores), "
+                "(SELECT count(*) FROM analytics.metric_score_current_runs), "
+                "(SELECT count(*) FROM analytics.analysis_cells)"
+            )
+        ).one()
+    assert immutable_counts_after == immutable_counts_before
     with pytest.raises(ScoringError, match="positive"):
         service.evaluate(grid_version, {first_metric.key: 0})
 
@@ -171,6 +277,8 @@ def test_normalized_publication_and_weighted_scoring_lifecycle(
         grid_version, {first_metric.key: 100, second_metric.key: 100}
     ).scoring_signature
     assert changed_signature != equal.scoring_signature
+    assert heatmap.plan_from_spec(prepared.spec).scoring_signature == equal.scoring_signature
+    assert heatmap.tile(prepared.scoring_signature, z, x, y, prepared.spec).payload
 
     version_two = normalization(
         first_metric.key, [[0, 100], [10, 40], [20, 0]], version="2"

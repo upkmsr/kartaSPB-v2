@@ -35,6 +35,7 @@ button {
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 label:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -280,6 +281,131 @@ label:focus-visible {
 
 .layer-control {
   min-height: 0;
+}
+
+.heatmap-control {
+  display: grid;
+  gap: 9px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.heatmap-control .section-label {
+  margin-bottom: 2px;
+}
+
+.heatmap-control__selector {
+  display: grid;
+  gap: 6px;
+  color: #8f9b97;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.heatmap-control__selector select {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid #344143;
+  border-radius: 0;
+  color: #d9e0dd;
+  background: #0d1314;
+  font-family: "Manrope", sans-serif;
+  font-size: 10px;
+}
+
+.heatmap-control__actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px;
+}
+
+.heatmap-control__actions button {
+  min-height: 31px;
+  padding: 0 12px;
+  border: 1px solid #4d615f;
+  color: #dce4e1;
+  background: #17201f;
+  cursor: pointer;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.heatmap-control__actions button:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.heatmap-control__actions button:disabled {
+  color: #596462;
+  cursor: default;
+  opacity: 0.65;
+}
+
+.heatmap-control__actions .heatmap-control__hide {
+  border-color: transparent;
+  background: transparent;
+}
+
+.heatmap-control__state {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  color: #98a39f;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.heatmap-control__state--error {
+  border-color: rgba(255, 118, 104, 0.45);
+  color: #ff9b90;
+}
+
+.heatmap-legend {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #344143;
+  background: rgba(10, 15, 16, 0.72);
+}
+
+.heatmap-legend strong {
+  color: #dce4e1;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.heatmap-legend > span {
+  color: #798581;
+  font-size: 8px;
+}
+
+.heatmap-legend__scale {
+  height: 8px;
+  background: linear-gradient(
+    90deg,
+    #d73027 0%,
+    #fc8d59 25%,
+    #fee08b 50%,
+    #91cf60 75%,
+    #1a9850 100%
+  );
+}
+
+.heatmap-legend__values,
+.heatmap-legend__direction {
+  display: flex;
+  justify-content: space-between;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 8px;
+}
+
+.heatmap-legend__direction {
+  color: #7f8b87;
 }
 
 .search-control {
