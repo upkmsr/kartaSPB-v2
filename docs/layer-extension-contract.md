@@ -83,7 +83,7 @@ it never enters catalog aggregation or the S6 auto/manual loading state.
 The F10 heatmap is not a twelfth static registry declaration. It is a runtime
 `derived-analysis` overlay because its source URL is parameterized by a deterministic F9
 scoring signature and an immutable historical-run spec. It is default off, non-selectable,
-MapLibre-native, independent of district/catalog loading, and visible from zoom 10. Its
+MapLibre-native, independent of district/catalog loading, and visible from zoom 11. Its
 fill is installed below both the optional grid outline and catalog layers. Style reload
 reinstalls the active source and layer without preparing a different score plan.
 

@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import type { PreparedHeatmap } from "../api/heatmap";
 import {
   HEATMAP_LAYER_ID,
+  HEATMAP_MIN_ZOOM,
   HEATMAP_SOURCE_ID,
   updateHeatmapOverlay,
 } from "./heatmapOverlay";
@@ -42,13 +43,14 @@ it("installs an absolute non-interactive fill below analysis and catalog layers"
   const map = mockMap();
   updateHeatmapOverlay(map as never, prepared("a".repeat(64)), "analysis-grid-fill");
 
+  expect(HEATMAP_MIN_ZOOM).toBe(11);
   expect(map.sources.get(HEATMAP_SOURCE_ID)).toEqual(
-    expect.objectContaining({ type: "vector", minzoom: 10 }),
+    expect.objectContaining({ type: "vector", minzoom: 11 }),
   );
   expect(map.layers.get(HEATMAP_LAYER_ID)).toEqual(
     expect.objectContaining({
       type: "fill",
-      minzoom: 10,
+      minzoom: 11,
       "source-layer": "analysis_heatmap",
       before: "analysis-grid-fill",
       paint: expect.objectContaining({ "fill-opacity": 0.72 }),

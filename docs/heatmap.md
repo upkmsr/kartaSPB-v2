@@ -47,7 +47,11 @@ one user-selected metric at weight 100. The backend supports arbitrary valid exp
 multi-metric weights so F11 can build scenarios without changing the delivery protocol,
 but F10 does not expose hidden/default weights or scenario persistence.
 
-The overlay is default off and starts at zoom 10. It uses fixed absolute score colors:
+The overlay is default off and starts at zoom 11. Both its vector source and fill layer
+declare `minzoom: 11`, so normal product rendering does not request heatmap tiles below
+the supported floor. The backend remains capable of serving z10 for diagnostics. This
+floor does not automatically change the user's zoom. The overlay uses fixed absolute
+score colors:
 
 | Score | Color | Meaning |
 | ---: | --- | --- |
@@ -79,8 +83,23 @@ Warm MVT results at the representative city-centre tile were:
 
 At z11, `EXPLAIN ANALYZE` completed the all-metric SQL in 89 ms, selected 2,475 tile
 cells via the geometry index, and joined 29,700 score rows rather than scanning all city
-cells. All accepted limits were met, including the z11 preferred target below 300 ms and
-the z10 hard limits below 1.5 seconds and 1.5 MiB.
+cells. The isolated rehearsal met the original z10 and z11 limits.
+
+The first production rollout on 2026-10-07 was intentionally rolled back after cold z10
+requests exceeded the original 1.5-second gate: school took 2.544 seconds and the
+all-metric case took 1.609 seconds. This was an operational product-floor decision, not a
+correctness or architectural failure. Production z11 cold results remained comfortably
+inside the accepted 1-second limit (school 0.157 seconds, family 0.554 seconds, all-metric
+0.608 seconds), so F10-R1 adopts the architecture's documented fallback and makes zoom 11
+the supported frontend minimum. z10 is diagnostic only and is no longer a production
+acceptance gate; z11 cold below 1 second and warm below 300 ms are authoritative.
+
+The F10-R1 production-shaped rehearsal then measured z11 cold/warm results of
+177/75 ms for school, 269/244 ms for the family profile, and 286/286 ms for all twelve
+metrics. The first all-metric warm observation was a 305 ms boundary outlier; four of the
+next five identical warmed requests were below 300 ms and the five-sample median was
+286 ms. z12 cold/warm results were 22/22 ms, 114/118 ms, and 148/181 ms respectively.
+All responses remained byte-identical and retained the accepted signatures and sizes.
 
 HTTP rehearsal confirmed correct MVT media type and identity/cache headers, empty-tile
 behavior, rejection of a mismatched signature, and zero changes to grid, F8, and F9 table

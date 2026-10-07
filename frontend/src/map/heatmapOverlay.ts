@@ -3,7 +3,7 @@ import type { PreparedHeatmap } from "../api/heatmap";
 
 export const HEATMAP_SOURCE_ID = "analysis-heatmap-source";
 export const HEATMAP_LAYER_ID = "analysis-heatmap-fill";
-export const HEATMAP_MIN_ZOOM = 10;
+export const HEATMAP_MIN_ZOOM = 11;
 
 type HeatmapOverlayMap = Pick<
   MapLibreMap,
