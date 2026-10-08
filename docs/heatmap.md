@@ -50,8 +50,23 @@ but F10 does not expose hidden/default weights or scenario persistence.
 The overlay is default off and starts at zoom 11. Both its vector source and fill layer
 declare `minzoom: 11`, so normal product rendering does not request heatmap tiles below
 the supported floor. The backend remains capable of serving z10 for diagnostics. This
-floor does not automatically change the user's zoom. The overlay uses fixed absolute
-score colors:
+floor does not automatically change the user's zoom.
+
+F10-R2 separates the analytical score from its display transform. The score, F9 run,
+scoring signature, heatmap spec, tile request, and MVT bytes remain unchanged when the
+user changes contrast. Only the MapLibre `fill-color` paint expression changes. Three
+presets are available:
+
+| Contrast | Display range |
+| --- | ---: |
+| Low | 0–100 |
+| Medium | 25–100 |
+| High (default) | 40–100 |
+
+Values at or below the display minimum use the minimum color and values at or above the
+maximum use the maximum color. The legend shows the active values; for the default they
+are 40, 55, 70, 85, and 100. This changes color sensitivity only and never rewrites an
+analytical score. The palette remains:
 
 | Score | Color | Meaning |
 | ---: | --- | --- |
@@ -65,6 +80,12 @@ The fill opacity is 0.72. The heatmap is installed below the analysis grid and c
 objects, is non-selectable, and never participates in catalog viewport loading. It is
 restored after a MapLibre style reload. Hiding it removes its source/layer; a failed new
 prepare leaves an already active overlay intact. State is deliberately not persisted.
+
+The resolution prototype offers Auto, 200 m, and 50 m. A selection changes the real
+`grid_version`, metric score runs, and tile source; it never subdivides or interpolates a
+coarser score. The rehearsed Auto hypothesis is 200 m below z13 and 50 m at z13 and above.
+The optional technical grid outline remains a separate control and continues to show the
+production 200 m grid until a resolution-aware outline API is explicitly added.
 
 ## Rehearsal acceptance
 
@@ -107,8 +128,33 @@ counts. Interactive browser visual QA remains a production-rollout gate; automat
 overlay lifecycle, API, TypeScript, lint, and production-build checks cover the current
 implementation checkpoint.
 
+## F10-R2 50 m rehearsal
+
+The isolated production-shaped rehearsal generated 580,597 genuine 50 m cells covering
+18/18 districts, then calculated 12 F8 raw runs and 12 F9 v1 normalized runs. Each layer
+contains 6,967,164 values. No 200 m value was interpolated. The grid checksum is
+`41e8dd7827ae1d965f0a6bfa5c5d7f9694959ac7f1d039479c4b2d2ac5f026ea`.
+
+The tile path was hardened so immutable run metadata is resolved without recounting every
+score row for every tile. Atomic publication, append-only guards, stored cell counts, and
+the full scoring evaluation completeness check remain in force. With that fix, all three
+50 m cases met the cold <1 second, warm <300 ms, and <1.5 MiB hard gates:
+
+| z | Cells | School cold/warm | Family cold/warm | All 12 cold/warm | Largest tile |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 12 | 9,781 | 265/176 ms | 644/404 ms | 542/592 ms | 703 KiB |
+| 13 | 2,496 | 50/49 ms | 109/109 ms | 152/110 ms | 185 KiB |
+| 14 | 650 | 13/12 ms | 22/19 ms | 26/22 ms | 48 KiB |
+| 15 | 174 | 6/6 ms | 10/9 ms | 11/10 ms | 13 KiB |
+
+Representative z13 `EXPLAIN ANALYZE` completed in 151 ms, selected 2,496 cells spatially,
+and joined 29,952 score rows for the 12-metric case. See
+[multi-resolution-analysis.md](multi-resolution-analysis.md) for generation, storage,
+25/10 m feasibility, and normalization-saturation evidence.
+
 ## Stage boundary
 
 F10 does not define a recommended composite or persist scenarios. F11 owns scenario
 names, saved weight sets, comparison, and any product policy for multi-metric presets.
-Production backend/frontend rollout of F10 requires separate explicit authorization.
+Publishing the 50 m grid and its 24 metric/normalization runs, and deploying the F10-R2
+artifacts, require separate explicit production authorization and a new visual gate.

@@ -7,6 +7,10 @@ import type { SearchResult } from "../api/search";
 import type { MapRequestState } from "../map/mapTypes";
 import type { PreparedHeatmap } from "../api/heatmap";
 import { HeatmapControl } from "./HeatmapControl";
+import {
+  DEFAULT_HEATMAP_DISPLAY_RANGE,
+  type HeatmapDisplayRange,
+} from "../map/heatmapOverlay";
 
 type ConnectionState = "checking" | "ready" | "offline";
 
@@ -23,6 +27,7 @@ export type SidebarProps = {
   searchCategoryKeys: readonly string[];
   selectedSearchResultId: string | null;
   activeHeatmap: PreparedHeatmap | null;
+  heatmapDisplayRange?: HeatmapDisplayRange;
   heatmapTileError: string | null;
   zoom: number;
   onExpandedChange: (expanded: boolean) => void;
@@ -37,6 +42,7 @@ export type SidebarProps = {
   onResetLoadingSettings: () => void;
   onSearchResultActivate: (result: SearchResult) => void;
   onHeatmapPrepared: (heatmap: PreparedHeatmap) => void;
+  onHeatmapDisplayRangeChange?: (range: HeatmapDisplayRange) => void;
   onHeatmapHide: () => void;
 };
 
@@ -53,6 +59,7 @@ export function Sidebar({
   searchCategoryKeys,
   selectedSearchResultId,
   activeHeatmap,
+  heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
   heatmapTileError,
   zoom,
   onExpandedChange,
@@ -67,6 +74,7 @@ export function Sidebar({
   onResetLoadingSettings,
   onSearchResultActivate,
   onHeatmapPrepared,
+  onHeatmapDisplayRangeChange = () => undefined,
   onHeatmapHide,
 }: SidebarProps) {
   return (
@@ -112,7 +120,10 @@ export function Sidebar({
           <HeatmapControl
             activeHeatmap={activeHeatmap}
             tileError={heatmapTileError}
+            displayRange={heatmapDisplayRange}
+            zoom={zoom}
             onPrepared={onHeatmapPrepared}
+            onDisplayRangeChange={onHeatmapDisplayRangeChange}
             onHide={onHeatmapHide}
           />
 

@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass
 from time import monotonic
 from typing import Any
@@ -14,6 +15,7 @@ CELL_SIZE_M = 200
 METRIC_SRID = 32636
 DISPLAY_SRID = 4326
 EXPECTED_DISTRICT_COUNT = 18
+GRID_VERSION_PATTERN = re.compile(r"^spb-square-(?P<cell_size_m>[1-9][0-9]*)m-v[1-9][0-9]*$")
 
 
 class GridBootstrapError(RuntimeError):
@@ -170,18 +172,43 @@ _MISMATCH_SQL = text(
 )
 
 
-def _parameters() -> dict[str, int | str]:
+def grid_version_for(cell_size_m: int, version: int = 1) -> str:
+    if cell_size_m <= 0:
+        raise GridBootstrapError("cell_size_m must be positive")
+    if version <= 0:
+        raise GridBootstrapError("grid version revision must be positive")
+    return f"spb-square-{cell_size_m}m-v{version}"
+
+
+def _validate_grid_spec(grid_version: str, cell_size_m: int) -> None:
+    match = GRID_VERSION_PATTERN.fullmatch(grid_version)
+    if match is None:
+        raise GridBootstrapError(
+            "grid_version must use the versioned spb-square-<cell-size>m-v<revision> format"
+        )
+    encoded_cell_size = int(match.group("cell_size_m"))
+    if encoded_cell_size != cell_size_m:
+        raise GridBootstrapError(
+            "grid_version cell size does not match cell_size_m: "
+            f"{encoded_cell_size} != {cell_size_m}"
+        )
+
+
+def _parameters(grid_version: str, cell_size_m: int) -> dict[str, int | str]:
+    _validate_grid_spec(grid_version, cell_size_m)
     return {
-        "grid_version": GRID_VERSION,
-        "cell_size_m": CELL_SIZE_M,
+        "grid_version": grid_version,
+        "cell_size_m": cell_size_m,
         "metric_srid": METRIC_SRID,
         "display_srid": DISPLAY_SRID,
         "expected_district_count": EXPECTED_DISTRICT_COUNT,
     }
 
 
-def _validate_district_source(connection: Connection) -> None:
-    row = connection.execute(_DISTRICT_VALIDATION_SQL, _parameters()).one()
+def _validate_district_source(
+    connection: Connection, parameters: dict[str, int | str]
+) -> None:
+    row = connection.execute(_DISTRICT_VALIDATION_SQL, parameters).one()
     if row.enabled_count != EXPECTED_DISTRICT_COUNT:
         raise GridBootstrapError(
             f"expected {EXPECTED_DISTRICT_COUNT} enabled districts, found {row.enabled_count}"
@@ -211,15 +238,20 @@ def _checksum(connection: Connection) -> str:
     return digest.hexdigest()
 
 
-def bootstrap_grid(engine: Engine | None = None) -> GridBootstrapReport:
+def bootstrap_grid(
+    engine: Engine | None = None,
+    *,
+    grid_version: str = GRID_VERSION,
+    cell_size_m: int = CELL_SIZE_M,
+) -> GridBootstrapReport:
     started = monotonic()
     target_engine = engine or get_engine()
-    parameters = _parameters()
+    parameters = _parameters(grid_version, cell_size_m)
     with target_engine.begin() as connection:
         connection.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:grid_version))"), parameters
         )
-        _validate_district_source(connection)
+        _validate_district_source(connection, parameters)
         connection.execute(_CREATE_EXPECTED_SQL, parameters)
         validation = connection.execute(_EXPECTED_VALIDATION_SQL, parameters).one()
 
@@ -287,8 +319,8 @@ def bootstrap_grid(engine: Engine | None = None) -> GridBootstrapReport:
         checksum = _checksum(connection)
 
     return GridBootstrapReport(
-        grid_version=GRID_VERSION,
-        cell_size_m=CELL_SIZE_M,
+        grid_version=grid_version,
+        cell_size_m=cell_size_m,
         metric_srid=METRIC_SRID,
         display_srid=DISPLAY_SRID,
         cell_count=validation.cell_count,
@@ -313,10 +345,23 @@ def bootstrap_grid(engine: Engine | None = None) -> GridBootstrapReport:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Build the deterministic F6 analysis grid")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("bootstrap", help="Create or verify the versioned 200 m grid")
+    bootstrap = commands.add_parser(
+        "bootstrap", help="Create or verify a deterministic versioned square grid"
+    )
+    bootstrap.add_argument("--grid-version", default=GRID_VERSION)
+    bootstrap.add_argument("--cell-size-m", type=int, default=CELL_SIZE_M)
     args = parser.parse_args(argv)
     if args.command == "bootstrap":
-        print(json.dumps(bootstrap_grid().to_dict(), ensure_ascii=False, sort_keys=True))
+        print(
+            json.dumps(
+                bootstrap_grid(
+                    grid_version=args.grid_version,
+                    cell_size_m=args.cell_size_m,
+                ).to_dict(),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
 
 
 if __name__ == "__main__":

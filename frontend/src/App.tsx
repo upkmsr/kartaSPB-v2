@@ -18,6 +18,10 @@ import {
   saveMapLoadingSettings,
 } from "./map/mapLoadingSettings";
 import { searchResultNavigation } from "./map/searchNavigation";
+import {
+  DEFAULT_HEATMAP_DISPLAY_RANGE,
+  type HeatmapDisplayRange,
+} from "./map/heatmapOverlay";
 import type {
   MapNavigationRequest,
   MapNavigationTarget,
@@ -46,6 +50,9 @@ export function App() {
   const [objectSelection, setObjectSelection] = useState<ObjectSelection | null>(null);
   const [selectedSearchResultId, setSelectedSearchResultId] = useState<string | null>(null);
   const [activeHeatmap, setActiveHeatmap] = useState<PreparedHeatmap | null>(null);
+  const [heatmapDisplayRange, setHeatmapDisplayRange] = useState<HeatmapDisplayRange>(
+    DEFAULT_HEATMAP_DISPLAY_RANGE,
+  );
   const [heatmapTileError, setHeatmapTileError] = useState<string | null>(null);
   const navigationSequenceRef = useRef(0);
   const visibleLayerIds = loadingSettings.visibleLayerIds;
@@ -166,6 +173,7 @@ export function App() {
           searchCategoryKeys={searchCategoryKeys}
           selectedSearchResultId={selectedSearchResultId}
           activeHeatmap={activeHeatmap}
+          heatmapDisplayRange={heatmapDisplayRange}
           heatmapTileError={heatmapTileError}
           zoom={zoom}
           onExpandedChange={setSidebarExpanded}
@@ -185,6 +193,7 @@ export function App() {
             setHeatmapTileError(null);
             setActiveHeatmap(heatmap);
           }}
+          onHeatmapDisplayRangeChange={setHeatmapDisplayRange}
           onHeatmapHide={() => {
             setHeatmapTileError(null);
             setActiveHeatmap(null);
@@ -199,6 +208,7 @@ export function App() {
           navigationRequest={navigationRequest}
           objectSelection={objectSelection}
           activeHeatmap={activeHeatmap}
+          heatmapDisplayRange={heatmapDisplayRange}
           onObjectSelect={(id) => {
             setSelectedSearchResultId(null);
             setObjectSelection({ id, origin: "map" });

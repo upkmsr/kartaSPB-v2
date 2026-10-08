@@ -57,7 +57,7 @@ it("starts off with no implicit metric and exposes all twelve profiles", async (
   expect(fetchMock).toHaveBeenCalledOnce();
 });
 
-it("prepares exactly one explicit weight, shows the absolute legend, and hides", async () => {
+it("prepares one explicit weight on the resolved grid, shows the active legend, and hides", async () => {
   const onPrepared = vi.fn();
   const onHide = vi.fn();
   const fetchMock = vi
@@ -82,6 +82,7 @@ it("prepares exactly one explicit weight, shows the absolute legend, and hides",
   const prepareCall = fetchMock.mock.calls[1];
   expect(prepareCall[0]).toBe("/api/analysis/heatmap/prepare");
   expect(JSON.parse(String((prepareCall[1] as RequestInit).body))).toEqual({
+    grid_version: "spb-square-200m-v1",
     weights: { [profiles[0].metric_key]: 100 },
   });
 
@@ -94,13 +95,61 @@ it("prepares exactly one explicit weight, shows the absolute legend, and hides",
     />,
   );
   const legend = screen.getByLabelText("Легенда тепловой карты");
-  for (const value of ["0", "25", "50", "75", "100"]) {
+  for (const value of ["40", "55", "70", "85", "100"]) {
     expect(legend).toHaveTextContent(value);
   }
+  expect(legend).toHaveTextContent("Баллы ниже 40");
   expect(legend).toHaveTextContent("хуже");
   expect(legend).toHaveTextContent("лучше");
   fireEvent.click(screen.getByRole("button", { name: "Скрыть" }));
   expect(onHide).toHaveBeenCalledOnce();
+});
+
+it("changes display contrast without preparing new data", async () => {
+  const onDisplayRangeChange = vi.fn();
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(response(profiles));
+  render(
+    <HeatmapControl
+      activeHeatmap={prepared}
+      tileError={null}
+      onPrepared={vi.fn()}
+      onHide={vi.fn()}
+      onDisplayRangeChange={onDisplayRangeChange}
+    />,
+  );
+
+  await screen.findByRole("combobox", { name: "Показатель тепловой карты" });
+  fireEvent.click(screen.getByRole("button", { name: "Средний" }));
+  expect(onDisplayRangeChange).toHaveBeenCalledWith({ min: 25, max: 100 });
+  expect(fetchMock).toHaveBeenCalledOnce();
+});
+
+it("prepares the real 50 m grid when detailed resolution is selected", async () => {
+  const fetchMock = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(response(profiles))
+    .mockResolvedValueOnce(response({ ...prepared, grid_version: "spb-square-50m-v1" }));
+  render(
+    <HeatmapControl
+      activeHeatmap={null}
+      tileError={null}
+      onPrepared={vi.fn()}
+      onHide={vi.fn()}
+      zoom={14}
+    />,
+  );
+
+  fireEvent.change(
+    await screen.findByRole("combobox", { name: "Показатель тепловой карты" }),
+    { target: { value: profiles[0].metric_key } },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "50 м" }));
+  fireEvent.click(screen.getByRole("button", { name: "Показать" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body))).toEqual({
+    grid_version: "spb-square-50m-v1",
+    weights: { [profiles[0].metric_key]: 100 },
+  });
 });
 
 it("reports a prepare failure without removing an existing overlay", async () => {

@@ -41,6 +41,8 @@ import type { PreparedHeatmap } from "../api/heatmap";
 import {
   HEATMAP_LAYER_ID,
   HEATMAP_SOURCE_ID,
+  DEFAULT_HEATMAP_DISPLAY_RANGE,
+  type HeatmapDisplayRange,
   updateHeatmapOverlay,
 } from "./heatmapOverlay";
 
@@ -79,6 +81,7 @@ export type MapViewProps = {
   navigationRequest: MapNavigationRequest | null;
   selectedFeatureId: string | null;
   activeHeatmap?: PreparedHeatmap | null;
+  heatmapDisplayRange?: HeatmapDisplayRange;
   onSelection: (selection: MapSelection) => void;
   onVisibleFeatureIdsChange: (visibleIds: ReadonlySet<string>) => void;
   onRequestStateChange: (state: MapRequestState) => void;
@@ -94,6 +97,7 @@ export function MapView({
   navigationRequest,
   selectedFeatureId,
   activeHeatmap = null,
+  heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
   onSelection,
   onVisibleFeatureIdsChange,
   onRequestStateChange,
@@ -107,6 +111,7 @@ export function MapView({
   const districtIdsRef = useRef(districtIds);
   const selectedFeatureIdRef = useRef(selectedFeatureId);
   const activeHeatmapRef = useRef(activeHeatmap);
+  const heatmapDisplayRangeRef = useRef(heatmapDisplayRange);
   const onSelectionRef = useRef<(selection: MapSelection) => void>(() => undefined);
   const onVisibleFeatureIdsChangeRef = useRef(onVisibleFeatureIdsChange);
   const onRequestStateChangeRef = useRef(onRequestStateChange);
@@ -131,6 +136,7 @@ export function MapView({
   districtIdsRef.current = districtIds;
   selectedFeatureIdRef.current = selectedFeatureId;
   activeHeatmapRef.current = activeHeatmap;
+  heatmapDisplayRangeRef.current = heatmapDisplayRange;
   onSelectionRef.current = onSelection;
   onVisibleFeatureIdsChangeRef.current = onVisibleFeatureIdsChange;
   onRequestStateChangeRef.current = onRequestStateChange;
@@ -316,6 +322,7 @@ export function MapView({
         updateHeatmapOverlay(
           map,
           activeHeatmapRef.current,
+          heatmapDisplayRangeRef.current,
           orderedRenderDefinitions[0]?.definition.id,
         );
       }
@@ -449,10 +456,11 @@ export function MapView({
       updateHeatmapOverlay(
         map,
         activeHeatmap,
+        heatmapDisplayRange,
         orderedRenderDefinitions[0]?.definition.id,
       );
     }
-  }, [activeHeatmap]);
+  }, [activeHeatmap, heatmapDisplayRange]);
 
   return <div ref={containerRef} className="catalog-map" aria-label="Карта Санкт-Петербурга" />;
 }

@@ -9,6 +9,10 @@ import type {
 import { ObjectCard } from "./ObjectCard";
 import type { MapSelection } from "../map/layerContract";
 import type { PreparedHeatmap } from "../api/heatmap";
+import {
+  DEFAULT_HEATMAP_DISPLAY_RANGE,
+  type HeatmapDisplayRange,
+} from "../map/heatmapOverlay";
 
 export type MapWorkspaceProps = {
   visibleLayerIds: ReadonlySet<string>;
@@ -18,6 +22,7 @@ export type MapWorkspaceProps = {
   navigationRequest: MapNavigationRequest | null;
   objectSelection: { id: string; origin: "map" | "search" } | null;
   activeHeatmap?: PreparedHeatmap | null;
+  heatmapDisplayRange?: HeatmapDisplayRange;
   onObjectSelect: (objectId: string) => void;
   onObjectClose: () => void;
   onZoomChange: (zoom: number) => void;
@@ -60,6 +65,7 @@ export function MapWorkspace({
   navigationRequest,
   objectSelection,
   activeHeatmap = null,
+  heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
   onObjectSelect,
   onObjectClose,
   onZoomChange,
@@ -139,6 +145,7 @@ export function MapWorkspace({
         navigationRequest={navigationRequest}
         selectedFeatureId={selectedObjectId}
         activeHeatmap={activeHeatmap}
+        heatmapDisplayRange={heatmapDisplayRange}
         onSelection={handleMapSelection}
         onVisibleFeatureIdsChange={handleVisibleFeatureIds}
         onRequestStateChange={handleRequestStateChange}

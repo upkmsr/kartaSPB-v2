@@ -25,10 +25,13 @@ contract, transactional failure behavior and retention gate are documented in
 [upi-source-foundation.md](upi-source-foundation.md).
 
 F6 activates the existing `analytics` boundary with
-`analytics.analysis_cells`. It stores a deterministic 200 m square grid in both
-EPSG:32636 (analysis) and EPSG:4326 (display), linked to stable district UUIDs. It does
-not store catalog objects, source evidence, metrics, scores, or user state. See
-[analysis-grid.md](analysis-grid.md).
+`analytics.analysis_cells`. It stores deterministic versioned square grids in both
+EPSG:32636 (analysis) and EPSG:4326 (display), linked to stable district UUIDs. The
+accepted production overview is 200 m; F10-R2 proves a 50 m detailed target and a 100 m
+intermediate grid in isolation. Grid version and coordinates are part of stable cell
+identity, so resolutions never reuse IDs. It does not store catalog objects, source
+evidence, metrics, scores, or user state. See [analysis-grid.md](analysis-grid.md) and
+[multi-resolution-analysis.md](multi-resolution-analysis.md).
 
 F7 adds immutable metric runs and raw cell values plus an atomic mutable current pointer.
 Definitions remain declarative and providers remain separate from persistence. Production
@@ -38,10 +41,14 @@ composites on demand. See [metric-engine.md](metric-engine.md),
 [existing-data-metrics.md](existing-data-metrics.md), and
 [scoring-engine.md](scoring-engine.md).
 
-F10 adds no table or persisted composite. It resolves a requested weight map to exact
+F10 adds no table or persisted composite. It resolves a requested weight map and
+`grid_version` to exact
 immutable F9 score runs, encodes that historical plan in a bounded opaque spec, and serves
 spatial-first MVT tiles. This keeps delivery and MapLibre rendering outside the canonical,
-domain, and publication schemas. See [heatmap.md](heatmap.md).
+domain, and publication schemas. Existing F6–F9 keys already support multiple grid
+versions; no F10-R2 migration is needed. Color contrast is a frontend-only paint transform
+and is deliberately separate from both stored scores and grid resolution. See
+[heatmap.md](heatmap.md).
 
 ## Source registry
 
@@ -149,9 +156,10 @@ on demand and are not persisted. The authorized production rollout applied 0014 
 published twelve current normalized runs covering all 36,292 analysis cells; F8 raw metric
 history and existing catalog/domain/UPI data remained unchanged.
 
-F10 requires no Alembic revision. Its prepare response and tile spec are stateless;
-existing F8/F9 immutable rows remain the only analytical inputs and user scenarios remain
-deferred to F11.
+F10 and F10-R2 require no Alembic revision. Their prepare response and tile spec are
+stateless; existing F8/F9 immutable rows remain the only analytical inputs and user
+scenarios remain deferred to F11. Parameterized grid generation is application code, not
+schema mutation; production publication of another grid remains an explicit data rollout.
 # Category Engine (FOUNDATION 3B)
 
 The canonical catalog remains provider-independent. Category definitions live in

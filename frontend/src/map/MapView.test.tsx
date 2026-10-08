@@ -27,6 +27,7 @@ type MockMapInstance = {
   flyTo: ReturnType<typeof vi.fn>;
   resize: ReturnType<typeof vi.fn>;
   setFilter: ReturnType<typeof vi.fn>;
+  setPaintProperty: ReturnType<typeof vi.fn>;
 };
 
 const mapMock = vi.hoisted(() => ({ instances: [] as MockMapInstance[] }));
@@ -52,6 +53,7 @@ vi.mock("maplibre-gl", () => {
     flyTo = vi.fn();
     resize = vi.fn();
     setFilter = vi.fn();
+    setPaintProperty = vi.fn();
 
     constructor() {
       mapMock.instances.push(this);
@@ -85,6 +87,13 @@ vi.mock("maplibre-gl", () => {
     }
     addLayer(layer: { id: string }) {
       this.layers.set(layer.id, layer);
+    }
+    removeLayer(id: string) {
+      this.layers.delete(id);
+    }
+    removeSource(id: string) {
+      if (id === "selected-districts") this.districtSource = null;
+      else this.source = null;
     }
     getBounds() {
       return {

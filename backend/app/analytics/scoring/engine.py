@@ -114,16 +114,11 @@ class ScoringService:
             rows = connection.execute(
                 text(
                     "SELECT c.metric_key, r.score_run_id, r.run_signature, "
-                    "r.normalization_checksum, r.cell_count, "
-                    "count(s.cell_id) AS actual_count "
+                    "r.normalization_checksum, r.cell_count "
                     "FROM analytics.metric_score_current_runs AS c "
                     "JOIN analytics.metric_score_runs AS r "
                     "ON r.score_run_id = c.score_run_id "
-                    "LEFT JOIN analytics.cell_metric_scores AS s "
-                    "ON s.score_run_id = r.score_run_id "
                     "WHERE c.grid_version = :grid_version AND c.metric_key IN :metric_keys "
-                    "GROUP BY c.metric_key, r.score_run_id, r.run_signature, "
-                    "r.normalization_checksum, r.cell_count"
                 ).bindparams(bindparam("metric_keys", expanding=True)),
                 {"grid_version": grid_version, "metric_keys": metric_keys},
             ).mappings().all()
@@ -162,13 +157,9 @@ class ScoringService:
             rows = connection.execute(
                 text(
                     "SELECT r.metric_key, r.score_run_id, r.run_signature, r.cell_count, "
-                    "r.grid_version, count(s.cell_id) AS actual_count "
+                    "r.grid_version "
                     "FROM analytics.metric_score_runs AS r "
-                    "LEFT JOIN analytics.cell_metric_scores AS s "
-                    "ON s.score_run_id = r.score_run_id "
                     "WHERE r.score_run_id IN :run_ids "
-                    "GROUP BY r.metric_key, r.score_run_id, r.run_signature, "
-                    "r.cell_count, r.grid_version"
                 ).bindparams(bindparam("run_ids", expanding=True)),
                 {"run_ids": run_ids},
             ).mappings().all()
@@ -193,10 +184,7 @@ class ScoringService:
     ) -> ScoringPlan:
         metric_keys = tuple(selected_weights)
         cell_counts = {int(by_key[key]["cell_count"]) for key in metric_keys}
-        if len(cell_counts) != 1 or any(
-            int(by_key[key]["actual_count"]) != int(by_key[key]["cell_count"])
-            for key in metric_keys
-        ):
+        if len(cell_counts) != 1:
             raise ScoringError("normalized score run is incomplete")
         metrics = tuple(
             ScoringMetric(

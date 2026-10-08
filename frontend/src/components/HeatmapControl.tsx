@@ -5,6 +5,18 @@ import {
   type NormalizationProfile,
   type PreparedHeatmap,
 } from "../api/heatmap";
+import {
+  DEFAULT_HEATMAP_DISPLAY_RANGE,
+  HEATMAP_COLORS,
+  heatmapLegendValues,
+  type HeatmapDisplayRange,
+} from "../map/heatmapOverlay";
+import {
+  AUTO_DETAIL_MIN_ZOOM,
+  DETAIL_GRID_VERSION,
+  resolveHeatmapGridVersion,
+  type HeatmapResolutionMode,
+} from "../map/heatmapResolution";
 
 type ProfilesState =
   | { status: "loading" }
@@ -16,14 +28,15 @@ export type HeatmapControlProps = {
   tileError: string | null;
   onPrepared: (heatmap: PreparedHeatmap) => void;
   onHide: () => void;
+  displayRange?: HeatmapDisplayRange;
+  onDisplayRangeChange?: (range: HeatmapDisplayRange) => void;
+  zoom?: number;
 };
 
-const legendStops = [
-  { value: 0, color: "#d73027" },
-  { value: 25, color: "#fc8d59" },
-  { value: 50, color: "#fee08b" },
-  { value: 75, color: "#91cf60" },
-  { value: 100, color: "#1a9850" },
+const contrastPresets = [
+  { key: "low", label: "Низкий", range: { min: 0, max: 100 } },
+  { key: "medium", label: "Средний", range: { min: 25, max: 100 } },
+  { key: "high", label: "Высокий", range: DEFAULT_HEATMAP_DISPLAY_RANGE },
 ] as const;
 
 export function HeatmapControl({
@@ -31,11 +44,15 @@ export function HeatmapControl({
   tileError,
   onPrepared,
   onHide,
+  displayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
+  onDisplayRangeChange = () => undefined,
+  zoom = 12,
 }: HeatmapControlProps) {
   const [profilesState, setProfilesState] = useState<ProfilesState>({ status: "loading" });
   const [selectedMetric, setSelectedMetric] = useState("");
   const [preparing, setPreparing] = useState(false);
   const [prepareError, setPrepareError] = useState<string | null>(null);
+  const [resolutionMode, setResolutionMode] = useState<HeatmapResolutionMode>("auto");
   const prepareControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -75,7 +92,13 @@ export function HeatmapControl({
     prepareControllerRef.current = controller;
     setPreparing(true);
     setPrepareError(null);
-    void prepareHeatmap({ weights: { [selectedMetric]: 100 } }, controller.signal)
+    void prepareHeatmap(
+      {
+        grid_version: resolveHeatmapGridVersion(resolutionMode, zoom),
+        weights: { [selectedMetric]: 100 },
+      },
+      controller.signal,
+    )
       .then((prepared) => {
         if (!controller.signal.aborted) onPrepared(prepared);
       })
@@ -121,6 +144,50 @@ export function HeatmapControl({
               ))}
             </select>
           </label>
+          <fieldset className="heatmap-control__choice-group">
+            <legend>Контраст карты</legend>
+            <div className="heatmap-control__segments">
+              {contrastPresets.map((preset) => {
+                const selected =
+                  displayRange.min === preset.range.min &&
+                  displayRange.max === preset.range.max;
+                return (
+                  <button
+                    aria-pressed={selected}
+                    key={preset.key}
+                    type="button"
+                    onClick={() => onDisplayRangeChange({ ...preset.range })}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+          <fieldset className="heatmap-control__choice-group">
+            <legend>Детализация</legend>
+            <div className="heatmap-control__segments">
+              {([
+                ["auto", "Авто"],
+                ["200m", "200 м"],
+                ["50m", "50 м"],
+              ] as const).map(([mode, label]) => (
+                <button
+                  aria-pressed={resolutionMode === mode}
+                  key={mode}
+                  type="button"
+                  onClick={() => setResolutionMode(mode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <small>
+              {resolutionMode === "auto"
+                ? `Авто: ${zoom >= AUTO_DETAIL_MIN_ZOOM ? "50 м" : "200 м"} при z${Math.floor(zoom)}`
+                : `Выбрано: ${resolutionMode === "50m" ? "50 м" : "200 м"}`}
+            </small>
+          </fieldset>
           <div className="heatmap-control__actions">
             <button type="button" disabled={!selectedProfile || preparing} onClick={activate}>
               {preparing ? "Подготовка…" : "Показать"}
@@ -141,15 +208,24 @@ export function HeatmapControl({
       {activeHeatmap && (
         <div className="heatmap-legend" aria-label="Легенда тепловой карты">
           <strong>{activeProfile?.label ?? Object.keys(activeHeatmap.weights)[0]}</strong>
-          <span>Нормализованная полезность, 0–100</span>
+          <span>
+            Цветовой диапазон: {displayRange.min}–{displayRange.max}. Аналитический балл:
+            0–100.
+          </span>
           <div className="heatmap-legend__scale" aria-hidden="true" />
           <div className="heatmap-legend__values">
-            {legendStops.map((stop) => (
-              <span key={stop.value} style={{ color: stop.color }}>
-                {stop.value}
+            {heatmapLegendValues(displayRange).map((value, index) => (
+              <span key={value} style={{ color: HEATMAP_COLORS[index] }}>
+                {Number.isInteger(value) ? value : value.toFixed(1)}
               </span>
             ))}
           </div>
+          {displayRange.min > 0 && (
+            <small>Баллы ниже {displayRange.min} отображаются минимальным цветом.</small>
+          )}
+          <small>
+            Сетка: {activeHeatmap.grid_version === DETAIL_GRID_VERSION ? "50 м" : "200 м"}
+          </small>
           <div className="heatmap-legend__direction">
             <span>хуже</span>
             <span>лучше</span>

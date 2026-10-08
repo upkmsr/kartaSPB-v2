@@ -316,6 +316,57 @@ label:focus-visible {
   font-size: 10px;
 }
 
+.heatmap-control__choice-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.heatmap-control__choice-group legend {
+  margin-bottom: 6px;
+  color: #8f9b97;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.heatmap-control__choice-group small {
+  color: #74807c;
+  font-size: 8px;
+}
+
+.heatmap-control__segments {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.heatmap-control__segments button {
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 5px;
+  border: 1px solid #344143;
+  border-right-width: 0;
+  color: #8f9b97;
+  background: #0d1314;
+  cursor: pointer;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 8px;
+}
+
+.heatmap-control__segments button:last-child {
+  border-right-width: 1px;
+}
+
+.heatmap-control__segments button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: #10201d;
+  background: var(--accent);
+}
+
 .heatmap-control__actions {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -382,6 +433,12 @@ label:focus-visible {
 .heatmap-legend > span {
   color: #798581;
   font-size: 8px;
+}
+
+.heatmap-legend > small {
+  color: #798581;
+  font-size: 8px;
+  line-height: 1.35;
 }
 
 .heatmap-legend__scale {

@@ -6,7 +6,7 @@ from math import asinh, pi, tan
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import DBAPIError
 
 from app.analytics.heatmap import HeatmapError, HeatmapService
@@ -188,8 +188,29 @@ def test_normalized_publication_and_weighted_scoring_lifecycle(
     z = 12
     x = int((lon + 180) / 360 * (1 << z))
     y = int((1 - asinh(tan(lat * pi / 180)) / pi) / 2 * (1 << z))
-    tile = heatmap.tile(prepared.scoring_signature, z, x, y, prepared.spec)
+    tile_statements: list[str] = []
+
+    def record_tile_statement(
+        _connection: object,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        tile_statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record_tile_statement)
+    try:
+        tile = heatmap.tile(prepared.scoring_signature, z, x, y, prepared.spec)
+    finally:
+        event.remove(engine, "before_cursor_execute", record_tile_statement)
     assert tile.payload
+    assert not any(
+        "count(" in statement.lower()
+        and "analytics.cell_metric_scores" in statement.lower()
+        for statement in tile_statements
+    )
     assert heatmap.tile(prepared.scoring_signature, z, x, y, prepared.spec).payload == tile.payload
     assert b"analysis_heatmap" in tile.payload
     assert b"cell_id" in tile.payload

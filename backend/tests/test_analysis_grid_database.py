@@ -4,7 +4,14 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import create_engine, text
 
-from app.analytics.grid import GridBootstrapError, bootstrap_grid
+from app.analytics.grid import GridBootstrapError, bootstrap_grid, grid_version_for
+
+
+def test_grid_version_binds_cell_size_and_revision() -> None:
+    assert grid_version_for(200) == "spb-square-200m-v1"
+    assert grid_version_for(50, version=2) == "spb-square-50m-v2"
+    with pytest.raises(GridBootstrapError, match="positive"):
+        grid_version_for(0)
 
 
 def database_url() -> str:
@@ -70,6 +77,11 @@ def test_analysis_grid_bootstrap_is_deterministic_and_fail_closed() -> None:
 
         first = bootstrap_grid(engine)
         second = bootstrap_grid(engine)
+        detailed = bootstrap_grid(
+            engine,
+            grid_version="spb-square-100m-v1",
+            cell_size_m=100,
+        )
 
         assert first.cell_count > 0
         assert first.district_count == 18
@@ -82,17 +94,21 @@ def test_analysis_grid_bootstrap_is_deterministic_and_fail_closed() -> None:
         assert second.created_count == 0
         assert second.unchanged_count == first.cell_count
         assert second.checksum_sha256 == first.checksum_sha256
+        assert detailed.grid_version == "spb-square-100m-v1"
+        assert detailed.cell_size_m == 100
+        assert detailed.cell_count > first.cell_count
 
         with engine.connect() as connection:
             assert connection.scalar(
                 text(
                     """
                     SELECT count(*) FROM analytics.analysis_cells
-                    WHERE ST_GeometryType(geom) <> 'ST_Polygon'
+                    WHERE grid_version = 'spb-square-200m-v1'
+                      AND (ST_GeometryType(geom) <> 'ST_Polygon'
                        OR ST_SRID(geom) <> 4326
                        OR ST_SRID(geom_metric) <> 32636
                        OR abs(ST_Area(geom_metric) - 40000) > 0.01
-                       OR NOT ST_Covers(geom_metric, center_metric)
+                       OR NOT ST_Covers(geom_metric, center_metric))
                     """
                 )
             ) == 0
@@ -104,7 +120,9 @@ def test_analysis_grid_bootstrap_is_deterministic_and_fail_closed() -> None:
                     UPDATE analytics.analysis_cells
                     SET grid_i = grid_i + 1000000
                     WHERE cell_id = (
-                        SELECT cell_id FROM analytics.analysis_cells ORDER BY cell_id LIMIT 1
+                        SELECT cell_id FROM analytics.analysis_cells
+                        WHERE grid_version = 'spb-square-200m-v1'
+                        ORDER BY cell_id LIMIT 1
                     )
                     """
                 )
