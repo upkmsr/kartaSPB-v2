@@ -38,6 +38,9 @@ def validate_calculation(
             raise MetricSanityError(
                 "count metric must be integral, non-negative, and have max > 0"
             )
+    elif definition.value_semantics == MetricValueSemantics.INDEX:
+        if minimum < 0 or maximum <= minimum or maximum <= 0:
+            raise MetricSanityError("index metric must have max > min >= 0")
     else:
         raise MetricSanityError(
             f"unsupported F8 value semantics: {definition.value_semantics.value}"

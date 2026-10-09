@@ -71,26 +71,36 @@ def test_production_registry_contains_exact_f8_contract() -> None:
     registry = MetricRegistry.load()
     definitions = registry.list()
     assert [definition.key for definition in definitions] == [
+        "education.kindergarten.accessibility_index",
         "education.kindergarten.count_1000m",
         "education.kindergarten.distance_m",
+        "education.school.accessibility_index",
         "education.school.count_1000m",
         "education.school.distance_m",
+        "healthcare.clinic.accessibility_index",
         "healthcare.clinic.distance_m",
+        "healthcare.hospital.accessibility_index",
         "healthcare.hospital.distance_m",
+        "healthcare.pharmacy.accessibility_index",
         "healthcare.pharmacy.count_1000m",
         "healthcare.pharmacy.distance_m",
+        "nature.park.accessibility_index",
         "nature.park.distance_m",
+        "nature.water.accessibility_index",
         "nature.water.distance_m",
+        "transport.stop.accessibility_index",
         "transport.stop.count_500m",
         "transport.stop.distance_m",
     ]
     assert {definition.definition_version for definition in definitions} == {"1"}
     assert {definition.calculation_version for definition in definitions} == {
-        "catalog-spatial-v1"
+        "catalog-spatial-v1",
+        "compact-quartic-v1",
     }
     assert {definition.provider_key for definition in definitions} == {
         "catalog.nearest_distance",
         "catalog.count_within_radius",
+        "catalog.smooth_influence",
     }
 
 

@@ -84,6 +84,32 @@ class ScoreEvaluationPublic(BaseModel):
     top_cells: list[ScoredCellPublic]
 
 
+class ScoreDistributionRequest(BaseModel):
+    grid_version: str | None = None
+    weights: dict[str, float]
+    district_ids: list[UUID] = Field(min_length=1, max_length=18)
+
+
+class ScoreDistributionPublic(BaseModel):
+    grid_version: str
+    scoring_signature: str
+    cell_count: int
+    p10: float
+    p25: float
+    p50: float
+    p75: float
+    p90: float
+
+
+class ScenarioDimensionPublic(BaseModel):
+    key: str
+    label: str
+    group: str
+    group_label: str
+    metric_key: str
+    display_order: int
+
+
 class HeatmapPrepareRequest(BaseModel):
     grid_version: str | None = None
     weights: dict[str, float]

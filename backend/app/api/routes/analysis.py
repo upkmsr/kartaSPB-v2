@@ -9,6 +9,7 @@ from app.analytics.heatmap import (
     HeatmapService,
 )
 from app.analytics.metrics.registry import MetricRegistry
+from app.analytics.scenarios import ScenarioRegistry
 from app.analytics.scoring.contracts import NormalizationDefinition
 from app.analytics.scoring.engine import ScoringError, ScoringService
 from app.analytics.scoring.registry import NormalizationRegistry
@@ -20,6 +21,9 @@ from app.api.schemas.analysis import (
     MetricDefinitionPublic,
     NormalizationDefinitionPublic,
     NormalizationPointPublic,
+    ScenarioDimensionPublic,
+    ScoreDistributionPublic,
+    ScoreDistributionRequest,
     ScoreEvaluationPublic,
     ScoreEvaluationRequest,
 )
@@ -53,6 +57,10 @@ def get_scoring_service() -> ScoringService:
 def get_heatmap_service() -> HeatmapService:
     engine = get_engine()
     return HeatmapService(engine, ScoringService(engine, get_normalization_registry()))
+
+
+def get_scenario_registry() -> ScenarioRegistry:
+    return ScenarioRegistry.load()
 
 
 def _public_definition(definition: object) -> MetricDefinitionPublic:
@@ -177,6 +185,34 @@ def evaluate_score(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
     return ScoreEvaluationPublic.model_validate(result.to_dict())
+
+
+@router.post("/scoring/distribution", response_model=ScoreDistributionPublic)
+def score_distribution(
+    request: ScoreDistributionRequest,
+    service: Annotated[ScoringService, Depends(get_scoring_service)],
+) -> ScoreDistributionPublic:
+    try:
+        result = service.distribution(
+            request.grid_version or GRID_VERSION,
+            request.weights,
+            request.district_ids,
+        )
+    except ScoringError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return ScoreDistributionPublic.model_validate(result.to_dict())
+
+
+@router.get("/scenarios/dimensions", response_model=list[ScenarioDimensionPublic])
+def scenario_dimensions(
+    registry: Annotated[ScenarioRegistry, Depends(get_scenario_registry)],
+) -> list[ScenarioDimensionPublic]:
+    return [
+        ScenarioDimensionPublic.model_validate(item, from_attributes=True)
+        for item in registry.list()
+    ]
 
 
 @router.post("/heatmap/prepare", response_model=HeatmapPreparePublic)

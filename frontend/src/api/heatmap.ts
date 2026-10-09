@@ -30,6 +30,26 @@ export type PreparedHeatmap = {
   delivery_version: string;
 };
 
+export type ScenarioDimension = {
+  key: string;
+  label: string;
+  group: string;
+  group_label: string;
+  metric_key: string;
+  display_order: number;
+};
+
+export type ScoreDistribution = {
+  grid_version: string;
+  scoring_signature: string;
+  cell_count: number;
+  p10: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p90: number;
+};
+
 export class HeatmapApiError extends Error {
   constructor(
     message: string,
@@ -67,6 +87,22 @@ export const fetchNormalizationProfiles = (
   signal?: AbortSignal,
 ): Promise<NormalizationProfile[]> =>
   apiJson<NormalizationProfile[]>(`${apiBaseUrl}/api/analysis/scoring/normalizations`, {
+    signal,
+  });
+
+export const fetchScenarioDimensions = (signal?: AbortSignal): Promise<ScenarioDimension[]> =>
+  apiJson<ScenarioDimension[]>(`${apiBaseUrl}/api/analysis/scenarios/dimensions`, {
+    signal,
+  });
+
+export const fetchScoreDistribution = (
+  request: { grid_version: string; weights: Record<string, number>; district_ids: string[] },
+  signal?: AbortSignal,
+): Promise<ScoreDistribution> =>
+  apiJson<ScoreDistribution>(`${apiBaseUrl}/api/analysis/scoring/distribution`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
     signal,
   });
 

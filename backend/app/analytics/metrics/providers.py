@@ -37,11 +37,13 @@ class MetricProviderRegistry:
         from app.analytics.metrics.catalog import (
             CatalogCountWithinRadiusProvider,
             CatalogNearestDistanceProvider,
+            CatalogSmoothInfluenceProvider,
         )
 
         return cls(
             {
                 "catalog.nearest_distance": CatalogNearestDistanceProvider(),
                 "catalog.count_within_radius": CatalogCountWithinRadiusProvider(),
+                "catalog.smooth_influence": CatalogSmoothInfluenceProvider(),
             }
         )

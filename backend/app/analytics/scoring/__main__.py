@@ -29,6 +29,9 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Normalize metrics and evaluate explicit weights")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("validate")
+    normalize = subparsers.add_parser("normalize")
+    normalize.add_argument("--metric", required=True)
+    normalize.add_argument("--grid-version", default=GRID_VERSION)
     normalize_all = subparsers.add_parser("normalize-all")
     normalize_all.add_argument("--grid-version", default=GRID_VERSION)
     evaluate = subparsers.add_parser("evaluate")
@@ -53,6 +56,15 @@ def execute(
             "registry_checksum": loaded_registry.checksum(),
         }
     target_engine = engine or get_engine()
+    if args.command == "normalize":
+        definition = loaded_registry.get(args.metric)
+        if definition is None:
+            raise NormalizationRegistryError(
+                f"unknown or disabled normalization: {args.metric}"
+            )
+        return publish_normalized_metric(
+            target_engine, definition, args.grid_version
+        ).to_dict()
     if args.command == "normalize-all":
         reports = [
             publish_normalized_metric(target_engine, definition, args.grid_version).to_dict()

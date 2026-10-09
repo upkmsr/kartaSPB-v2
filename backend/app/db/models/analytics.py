@@ -39,6 +39,12 @@ class AnalysisCell(Base):
         ),
         Index("ix_analytics_analysis_cells_grid_version", "grid_version"),
         Index("ix_analytics_analysis_cells_district_id", "district_id"),
+        Index(
+            "ix_analytics_analysis_cells_grid_district_cell",
+            "grid_version",
+            "district_id",
+            "cell_id",
+        ),
         {"schema": "analytics"},
     )
 

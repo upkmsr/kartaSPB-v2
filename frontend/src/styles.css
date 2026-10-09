@@ -290,6 +290,116 @@ label:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 
+.scenario-builder {
+  display: grid;
+  gap: 11px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.scenario-builder__group {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.scenario-builder__group legend {
+  margin-bottom: 3px;
+  color: #8f9b97;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.scenario-builder__slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 78px 28px;
+  gap: 7px;
+  align-items: center;
+  color: #cbd4d1;
+  font-size: 9px;
+}
+
+.scenario-builder__slider input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.scenario-builder__slider output {
+  color: var(--accent);
+  font-family: "IBM Plex Mono", monospace;
+  text-align: right;
+}
+
+.scenario-builder__quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.scenario-builder__quick-actions button,
+.single-metric-view summary {
+  min-height: 30px;
+  border: 1px solid #344143;
+  color: #9ba7a3;
+  background: #0d1314;
+  cursor: pointer;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.scenario-builder .heatmap-control__segments {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.heatmap-control__segments button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.scenario-builder__active-weights {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scenario-builder__active-weights li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #8f9b97;
+  font-size: 8px;
+}
+
+.scenario-builder__active-weights strong {
+  color: var(--accent);
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.single-metric-view {
+  display: grid;
+  gap: 10px;
+}
+
+.single-metric-view summary {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+}
+
+.single-metric-view[open] summary {
+  margin-bottom: 10px;
+  border-color: var(--accent);
+}
+
 .heatmap-control .section-label {
   margin-bottom: 2px;
 }

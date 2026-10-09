@@ -100,7 +100,16 @@ export function HeatmapControl({
       controller.signal,
     )
       .then((prepared) => {
-        if (!controller.signal.aborted) onPrepared(prepared);
+        if (!controller.signal.aborted) {
+          const hasKnownDisplayRange = contrastPresets.some(
+            (preset) =>
+              displayRange.min === preset.range.min && displayRange.max === preset.range.max,
+          );
+          if (!hasKnownDisplayRange) {
+            onDisplayRangeChange({ ...DEFAULT_HEATMAP_DISPLAY_RANGE });
+          }
+          onPrepared(prepared);
+        }
       })
       .catch(() => {
         if (!controller.signal.aborted) {

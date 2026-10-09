@@ -1,5 +1,6 @@
 import type { ExpressionSpecification, Map as MapLibreMap } from "maplibre-gl";
 import type { PreparedHeatmap } from "../api/heatmap";
+import { DETAIL_GRID_VERSION } from "./heatmapResolution";
 
 export const HEATMAP_SOURCE_ID = "analysis-heatmap-source";
 export const HEATMAP_LAYER_ID = "analysis-heatmap-fill";
@@ -119,7 +120,7 @@ export const updateHeatmapOverlay = (
   map.addSource(HEATMAP_SOURCE_ID, {
     type: "vector",
     tiles: [heatmap.tile_url_template],
-    minzoom: HEATMAP_MIN_ZOOM,
+    minzoom: heatmap.grid_version === DETAIL_GRID_VERSION ? 13 : HEATMAP_MIN_ZOOM,
     maxzoom: 22,
   });
   map.addLayer(
@@ -128,7 +129,7 @@ export const updateHeatmapOverlay = (
       source: HEATMAP_SOURCE_ID,
       "source-layer": "analysis_heatmap",
       type: "fill",
-      minzoom: HEATMAP_MIN_ZOOM,
+      minzoom: heatmap.grid_version === DETAIL_GRID_VERSION ? 13 : HEATMAP_MIN_ZOOM,
       paint: {
         "fill-color": heatmapColorExpression(displayRange),
         "fill-opacity": 0.72,

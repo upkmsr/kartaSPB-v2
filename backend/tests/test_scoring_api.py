@@ -2,7 +2,12 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from app.analytics.scoring.engine import ScoredCell, ScoringError, ScoringResult
+from app.analytics.scoring.engine import (
+    ScoredCell,
+    ScoringDistribution,
+    ScoringError,
+    ScoringResult,
+)
 from app.api.routes.analysis import get_scoring_service
 from app.main import app
 
@@ -30,12 +35,28 @@ class FakeScoringService:
             ),
         )
 
+    def distribution(
+        self, grid_version: str, weights: dict[str, float], district_ids: list[UUID]
+    ) -> ScoringDistribution:
+        if not district_ids:
+            raise ScoringError("at least one district is required")
+        return ScoringDistribution(
+            grid_version=grid_version,
+            scoring_signature="a" * 64,
+            cell_count=100,
+            p10=10,
+            p25=25,
+            p50=50,
+            p75=75,
+            p90=90,
+        )
 
-def test_normalization_api_exposes_twelve_public_profiles(client: TestClient) -> None:
+
+def test_normalization_api_exposes_existing_and_smooth_profiles(client: TestClient) -> None:
     response = client.get("/api/analysis/scoring/normalizations")
     assert response.status_code == 200
     payload = response.json()
-    assert len(payload) == 12
+    assert len(payload) == 20
     assert all(set(item) == {
         "metric_key", "normalization_version", "label", "method", "points", "checksum"
     } for item in payload)
@@ -71,3 +92,44 @@ def test_score_preview_requires_explicit_weights_and_returns_bounded_top_cells(
         assert "unknown" in rejected.json()["detail"]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_distribution_and_scenario_dimension_contracts(client: TestClient) -> None:
+    district_id = UUID("00000000-0000-0000-0000-000000000001")
+    app.dependency_overrides[get_scoring_service] = lambda: FakeScoringService()
+    try:
+        response = client.post(
+            "/api/analysis/scoring/distribution",
+            json={
+                "grid_version": "spb-square-50m-v1",
+                "weights": {"education.school.accessibility_index": 100},
+                "district_ids": [str(district_id)],
+            },
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "grid_version": "spb-square-50m-v1",
+            "scoring_signature": "a" * 64,
+            "cell_count": 100,
+            "p10": 10.0,
+            "p25": 25.0,
+            "p50": 50.0,
+            "p75": 75.0,
+            "p90": 90.0,
+        }
+    finally:
+        app.dependency_overrides.clear()
+    dimensions = client.get("/api/analysis/scenarios/dimensions")
+    assert dimensions.status_code == 200
+    payload = dimensions.json()
+    assert len(payload) == 8
+    assert {item["metric_key"] for item in payload} == {
+        "education.kindergarten.accessibility_index",
+        "education.school.accessibility_index",
+        "transport.stop.accessibility_index",
+        "healthcare.clinic.accessibility_index",
+        "healthcare.hospital.accessibility_index",
+        "healthcare.pharmacy.accessibility_index",
+        "nature.park.accessibility_index",
+        "nature.water.accessibility_index",
+    }

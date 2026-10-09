@@ -109,3 +109,17 @@ it("restores after style reload and removes the overlay when hidden", () => {
   expect(map.sources.has(HEATMAP_SOURCE_ID)).toBe(false);
   expect(map.layers.has(HEATMAP_LAYER_ID)).toBe(false);
 });
+
+it("never requests a 50 m source below z13", () => {
+  const map = mockMap();
+  updateHeatmapOverlay(
+    map as never,
+    { ...prepared("c".repeat(64)), grid_version: "spb-square-50m-v1" },
+  );
+  expect(map.sources.get(HEATMAP_SOURCE_ID)).toEqual(
+    expect.objectContaining({ minzoom: 13 }),
+  );
+  expect(map.layers.get(HEATMAP_LAYER_ID)).toEqual(
+    expect.objectContaining({ minzoom: 13 }),
+  );
+});

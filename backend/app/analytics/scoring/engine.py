@@ -73,6 +73,30 @@ class ScoringResult:
         }
 
 
+@dataclass(frozen=True)
+class ScoringDistribution:
+    grid_version: str
+    scoring_signature: str
+    cell_count: int
+    p10: float
+    p25: float
+    p50: float
+    p75: float
+    p90: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "grid_version": self.grid_version,
+            "scoring_signature": self.scoring_signature,
+            "cell_count": self.cell_count,
+            "p10": self.p10,
+            "p25": self.p25,
+            "p50": self.p50,
+            "p75": self.p75,
+            "p90": self.p90,
+        }
+
+
 def validate_weights(
     weights: dict[str, float], registry: NormalizationRegistry
 ) -> dict[str, float]:
@@ -225,6 +249,42 @@ class ScoringService:
         plan = self.resolve_current_plan(grid_version, weights)
         return self.evaluate_plan(plan, limit=limit)
 
+    def summarize_plan(self, plan: ScoringPlan) -> tuple[float, float, float]:
+        """Return cheap safe bounds and the exact weighted mean for heatmap prepare.
+
+        A composite's exact observed extrema require scanning every selected score row.
+        The weighted component extrema are conservative bounds, while linearity makes
+        the weighted mean exact for complete runs over the same cell set.
+        """
+        run_ids = tuple(metric.score_run_id for metric in plan.metrics)
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT score_run_id, cell_count, score_min, score_max, score_mean "
+                    "FROM analytics.metric_score_runs WHERE score_run_id IN :run_ids"
+                ).bindparams(bindparam("run_ids", expanding=True)),
+                {"run_ids": run_ids},
+            ).mappings().all()
+        by_id = {row["score_run_id"]: row for row in rows}
+        if len(by_id) != len(plan.metrics):
+            raise ScoringError("normalized score run not found")
+        for metric in plan.metrics:
+            if int(by_id[metric.score_run_id]["cell_count"]) != plan.cell_count:
+                raise ScoringError("normalized score run is incomplete")
+        minimum = math.fsum(
+            float(by_id[metric.score_run_id]["score_min"]) * metric.weight
+            for metric in plan.metrics
+        ) / plan.total_weight
+        maximum = math.fsum(
+            float(by_id[metric.score_run_id]["score_max"]) * metric.weight
+            for metric in plan.metrics
+        ) / plan.total_weight
+        mean = math.fsum(
+            float(by_id[metric.score_run_id]["score_mean"]) * metric.weight
+            for metric in plan.metrics
+        ) / plan.total_weight
+        return minimum, maximum, mean
+
     def evaluate_plan(self, plan: ScoringPlan, *, limit: int = 20) -> ScoringResult:
         if not 1 <= limit <= 100:
             raise ScoringError("limit must be between 1 and 100")
@@ -280,4 +340,70 @@ class ScoringService:
                 )
                 for row in result_rows
             ),
+        )
+
+    def distribution(
+        self,
+        grid_version: str,
+        weights: dict[str, float],
+        district_ids: list[UUID],
+    ) -> ScoringDistribution:
+        if not district_ids:
+            raise ScoringError("at least one district is required")
+        selected_districts = tuple(sorted(set(district_ids), key=str))
+        plan = self.resolve_current_plan(grid_version, weights)
+        params: dict[str, object] = {
+            "grid_version": plan.grid_version,
+            "district_ids": list(selected_districts),
+            "total_weight": plan.total_weight,
+        }
+        score_joins: list[str] = []
+        weighted_terms: list[str] = []
+        for index, metric in enumerate(plan.metrics):
+            alias = f"score_{index}"
+            score_joins.append(
+                "JOIN analytics.cell_metric_scores AS "
+                f"{alias} ON {alias}.score_run_id = CAST(:run_{index} AS uuid) "
+                f"AND {alias}.cell_id = cell.cell_id "
+            )
+            weighted_terms.append(
+                f"{alias}.score::numeric * CAST(:weight_{index} AS numeric)"
+            )
+            params[f"run_{index}"] = str(metric.score_run_id)
+            params[f"weight_{index}"] = metric.weight
+        query = text(
+            "WITH district_cells AS MATERIALIZED ("
+            "SELECT cell_id FROM analytics.analysis_cells "
+            "WHERE grid_version = :grid_version AND district_id = ANY(:district_ids)"
+            "), scored AS ("
+            "SELECT cell.cell_id, ("
+            + "+".join(weighted_terms)
+            + ") / CAST(:total_weight AS numeric) AS score "
+            "FROM district_cells AS cell "
+            + "".join(score_joins)
+            + ") SELECT count(*) AS cell_count, "
+            "percentile_cont(ARRAY[0.10,0.25,0.50,0.75,0.90]) "
+            "WITHIN GROUP (ORDER BY score) AS quantiles FROM scored"
+        )
+        with self._engine.connect() as connection:
+            known = connection.scalar(
+                text("SELECT count(*) FROM domain.districts WHERE enabled AND id = ANY(:ids)"),
+                {"ids": list(selected_districts)},
+            )
+            if int(known or 0) != len(selected_districts):
+                raise ScoringError("one or more districts are unknown or disabled")
+            connection.execute(text("SET LOCAL jit = off"))
+            row = connection.execute(query, params).mappings().one()
+        if not row["cell_count"] or row["quantiles"] is None:
+            raise ScoringError("district scoring distribution produced no cells")
+        quantiles = [float(value) for value in row["quantiles"]]
+        return ScoringDistribution(
+            grid_version=plan.grid_version,
+            scoring_signature=plan.scoring_signature,
+            cell_count=int(row["cell_count"]),
+            p10=quantiles[0],
+            p25=quantiles[1],
+            p50=quantiles[2],
+            p75=quantiles[3],
+            p90=quantiles[4],
         )

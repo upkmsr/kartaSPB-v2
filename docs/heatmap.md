@@ -43,9 +43,9 @@ all identity needed to reproduce a tile is carried by the validated immutable sp
 ## Frontend contract
 
 The sidebar exposes a separate `HeatmapControl`. In F10 it intentionally prepares only
-one user-selected metric at weight 100. The backend supports arbitrary valid explicit
-multi-metric weights so F11 can build scenarios without changing the delivery protocol,
-but F10 does not expose hidden/default weights or scenario persistence.
+one user-selected metric at weight 100. F11A reuses the same immutable delivery protocol
+for an explicit eight-dimension Scenario Builder; it does not introduce hidden/default
+weights or scenario persistence. See [scenario-builder.md](scenario-builder.md).
 
 The overlay is default off and starts at zoom 11. Both its vector source and fill layer
 declare `minzoom: 11`, so normal product rendering does not request heatmap tiles below
@@ -154,7 +154,9 @@ and joined 29,952 score rows for the 12-metric case. See
 
 ## Stage boundary
 
-F10 does not define a recommended composite or persist scenarios. F11 owns scenario
-names, saved weight sets, comparison, and any product policy for multi-metric presets.
-Publishing the 50 m grid and its 24 metric/normalization runs, and deploying the F10-R2
-artifacts, require separate explicit production authorization and a new visual gate.
+F10 does not define a recommended composite or persist scenarios. F11A adds only an
+ephemeral, explicit-weight personal scenario over eight smooth-accessibility inputs. Saved
+scenario names, durable preferences, comparisons, and product policy for recommended
+presets remain outside F11A. The F10-R2 50 m grid/runtime rollout is complete; F11A's new
+metric publications, migration 0015, and Scenario Builder rollout each remain explicit
+production actions.

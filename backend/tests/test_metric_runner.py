@@ -37,6 +37,7 @@ def calculation(values: tuple[float, ...], expected: int | None = None) -> Metri
 def test_distance_and_count_sanity_accept_valid_values() -> None:
     validate_calculation(definition("distance_m"), calculation((0.0, 10.5), 2))
     validate_calculation(definition("count"), calculation((0.0, 2.0), 2))
+    validate_calculation(definition("index"), calculation((0.0, 0.25, 2.0), 3))
 
 
 @pytest.mark.parametrize(
@@ -48,6 +49,7 @@ def test_distance_and_count_sanity_accept_valid_values() -> None:
         ("distance_m", (0.0, math.inf), "finite and non-negative"),
         ("count", (0.0, 1.5), "integral"),
         ("count", (0.0, 0.0), "max > 0"),
+        ("index", (1.0, 1.0), "max > min"),
     ],
 )
 def test_metric_sanity_fails_closed(

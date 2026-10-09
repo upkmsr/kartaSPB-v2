@@ -155,7 +155,7 @@ class HeatmapService:
     def prepare(self, grid_version: str, weights: dict[str, float]) -> PreparedHeatmap:
         try:
             plan = self._scoring.resolve_current_plan(grid_version, weights)
-            result = self._scoring.evaluate_plan(plan, limit=1)
+            minimum, maximum, mean = self._scoring.summarize_plan(plan)
         except ScoringError as exc:
             raise HeatmapError(str(exc)) from exc
         spec = encode_heatmap_spec(plan)
@@ -164,10 +164,10 @@ class HeatmapService:
             weights=plan.weights,
             scoring_signature=plan.scoring_signature,
             spec=spec,
-            cell_count=result.cell_count,
-            minimum=result.minimum,
-            maximum=result.maximum,
-            mean=result.mean,
+            cell_count=plan.cell_count,
+            minimum=minimum,
+            maximum=maximum,
+            mean=mean,
             tile_url_template=(
                 f"/api/analysis/heatmap/tiles/{plan.scoring_signature}/"
                 f"{{z}}/{{x}}/{{y}}.mvt?spec={spec}"

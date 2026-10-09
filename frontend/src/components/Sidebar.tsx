@@ -7,6 +7,7 @@ import type { SearchResult } from "../api/search";
 import type { MapRequestState } from "../map/mapTypes";
 import type { PreparedHeatmap } from "../api/heatmap";
 import { HeatmapControl } from "./HeatmapControl";
+import { ScenarioBuilder } from "./ScenarioBuilder";
 import {
   DEFAULT_HEATMAP_DISPLAY_RANGE,
   type HeatmapDisplayRange,
@@ -27,6 +28,7 @@ export type SidebarProps = {
   searchCategoryKeys: readonly string[];
   selectedSearchResultId: string | null;
   activeHeatmap: PreparedHeatmap | null;
+  heatmapOwner: "scenario" | "single" | null;
   heatmapDisplayRange?: HeatmapDisplayRange;
   heatmapTileError: string | null;
   zoom: number;
@@ -41,7 +43,8 @@ export type SidebarProps = {
   onLoadObjects: () => void;
   onResetLoadingSettings: () => void;
   onSearchResultActivate: (result: SearchResult) => void;
-  onHeatmapPrepared: (heatmap: PreparedHeatmap) => void;
+  onScenarioPrepared: (heatmap: PreparedHeatmap) => void;
+  onSingleHeatmapPrepared: (heatmap: PreparedHeatmap) => void;
   onHeatmapDisplayRangeChange?: (range: HeatmapDisplayRange) => void;
   onHeatmapHide: () => void;
 };
@@ -59,6 +62,7 @@ export function Sidebar({
   searchCategoryKeys,
   selectedSearchResultId,
   activeHeatmap,
+  heatmapOwner,
   heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
   heatmapTileError,
   zoom,
@@ -73,7 +77,8 @@ export function Sidebar({
   onLoadObjects,
   onResetLoadingSettings,
   onSearchResultActivate,
-  onHeatmapPrepared,
+  onScenarioPrepared,
+  onSingleHeatmapPrepared,
   onHeatmapDisplayRangeChange = () => undefined,
   onHeatmapHide,
 }: SidebarProps) {
@@ -117,15 +122,30 @@ export function Sidebar({
             onRetry={onDistrictRetry}
           />
 
-          <HeatmapControl
-            activeHeatmap={activeHeatmap}
-            tileError={heatmapTileError}
-            displayRange={heatmapDisplayRange}
+          <ScenarioBuilder
+            active={heatmapOwner === "scenario"}
+            activeHeatmap={heatmapOwner === "scenario" ? activeHeatmap : null}
+            districtIds={districtIds}
             zoom={zoom}
-            onPrepared={onHeatmapPrepared}
+            tileError={heatmapOwner === "scenario" ? heatmapTileError : null}
+            displayRange={heatmapDisplayRange}
+            onPrepared={onScenarioPrepared}
             onDisplayRangeChange={onHeatmapDisplayRangeChange}
             onHide={onHeatmapHide}
           />
+
+          <details className="single-metric-view">
+            <summary>Один показатель</summary>
+            <HeatmapControl
+              activeHeatmap={heatmapOwner === "single" ? activeHeatmap : null}
+              tileError={heatmapOwner === "single" ? heatmapTileError : null}
+              displayRange={heatmapDisplayRange}
+              zoom={zoom}
+              onPrepared={onSingleHeatmapPrepared}
+              onDisplayRangeChange={onHeatmapDisplayRangeChange}
+              onHide={onHeatmapHide}
+            />
+          </details>
 
           <LayerControl
             visibleLayerIds={visibleLayerIds}

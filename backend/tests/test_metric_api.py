@@ -48,27 +48,17 @@ def test_empty_registry_override_is_supported(client: TestClient) -> None:
         app.dependency_overrides.clear()
 
 
-def test_f8_production_registry_api_lists_exactly_twelve_metrics(
+def test_f8_production_registry_api_lists_existing_and_smooth_metrics(
     client: TestClient,
 ) -> None:
     response = client.get("/api/analysis/metrics")
     assert response.status_code == 200
     payload = response.json()
-    assert len(payload) == 12
-    assert [item["key"] for item in payload] == [
-        "education.kindergarten.count_1000m",
-        "education.kindergarten.distance_m",
-        "education.school.count_1000m",
-        "education.school.distance_m",
-        "healthcare.clinic.distance_m",
-        "healthcare.hospital.distance_m",
-        "healthcare.pharmacy.count_1000m",
-        "healthcare.pharmacy.distance_m",
-        "nature.park.distance_m",
-        "nature.water.distance_m",
-        "transport.stop.count_500m",
-        "transport.stop.distance_m",
-    ]
+    assert len(payload) == 20
+    keys = {item["key"] for item in payload}
+    assert len({key for key in keys if key.endswith(".accessibility_index")}) == 8
+    assert "education.school.distance_m" in keys
+    assert "transport.stop.count_500m" in keys
     assert all("provider_key" not in item for item in payload)
 
 

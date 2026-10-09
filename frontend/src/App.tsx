@@ -32,6 +32,7 @@ type ConnectionState = "checking" | "ready" | "offline";
 const INITIAL_ZOOM = 12;
 
 type ObjectSelection = { id: string; origin: "map" | "search" };
+type HeatmapOwner = "scenario" | "single" | null;
 
 export function App() {
   const [backend, setBackend] = useState<ConnectionState>("checking");
@@ -50,6 +51,7 @@ export function App() {
   const [objectSelection, setObjectSelection] = useState<ObjectSelection | null>(null);
   const [selectedSearchResultId, setSelectedSearchResultId] = useState<string | null>(null);
   const [activeHeatmap, setActiveHeatmap] = useState<PreparedHeatmap | null>(null);
+  const [heatmapOwner, setHeatmapOwner] = useState<HeatmapOwner>(null);
   const [heatmapDisplayRange, setHeatmapDisplayRange] = useState<HeatmapDisplayRange>(
     DEFAULT_HEATMAP_DISPLAY_RANGE,
   );
@@ -173,6 +175,7 @@ export function App() {
           searchCategoryKeys={searchCategoryKeys}
           selectedSearchResultId={selectedSearchResultId}
           activeHeatmap={activeHeatmap}
+          heatmapOwner={heatmapOwner}
           heatmapDisplayRange={heatmapDisplayRange}
           heatmapTileError={heatmapTileError}
           zoom={zoom}
@@ -189,13 +192,20 @@ export function App() {
           onLoadObjects={() => setManualLoadSequence((sequence) => sequence + 1)}
           onResetLoadingSettings={() => setLoadingSettings(defaultMapLoadingSettings())}
           onSearchResultActivate={activateSearchResult}
-          onHeatmapPrepared={(heatmap) => {
+          onScenarioPrepared={(heatmap) => {
             setHeatmapTileError(null);
+            setHeatmapOwner("scenario");
+            setActiveHeatmap(heatmap);
+          }}
+          onSingleHeatmapPrepared={(heatmap) => {
+            setHeatmapTileError(null);
+            setHeatmapOwner("single");
             setActiveHeatmap(heatmap);
           }}
           onHeatmapDisplayRangeChange={setHeatmapDisplayRange}
           onHeatmapHide={() => {
             setHeatmapTileError(null);
+            setHeatmapOwner(null);
             setActiveHeatmap(null);
           }}
         />

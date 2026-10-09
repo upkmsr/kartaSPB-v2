@@ -149,6 +149,25 @@ def test_normalized_publication_and_weighted_scoring_lifecycle(
         grid_version, {first_metric.key: 100, second_metric.key: 100}
     )
     assert (equal.minimum, equal.maximum, equal.mean) == (50, 50, 50)
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE domain.districts SET enabled=true WHERE id=:id"),
+            {"id": district_id},
+        )
+    distribution = service.distribution(
+        grid_version,
+        {first_metric.key: 100, second_metric.key: 100},
+        [district_id, district_id],
+    )
+    assert distribution.scoring_signature == equal.scoring_signature
+    assert distribution.cell_count == 3
+    assert (distribution.p10, distribution.p50, distribution.p90) == (50, 50, 50)
+    with pytest.raises(ScoringError, match="unknown or disabled"):
+        service.distribution(
+            grid_version,
+            {first_metric.key: 100},
+            [uuid4()],
+        )
     reversed_order = service.evaluate(
         grid_version, {second_metric.key: 100, first_metric.key: 100}
     )

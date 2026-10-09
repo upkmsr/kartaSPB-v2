@@ -7,8 +7,8 @@ The accepted platform sequence is deliberately data-first:
 3. F7 Metric Engine — **DONE**
 4. F8 Existing Data Metrics — **DONE**
 5. F9 Scoring Engine — **DONE**
-6. F10 Heatmap — **RUNTIME ACCEPTED / R2 VISUAL + 50 M ROLLOUT PENDING**
-7. F11 Scenario Builder
+6. F10 Heatmap — **DONE**
+7. F11 Scenario Builder — **F11A IMPLEMENTED / PRODUCTION ROLLOUT PENDING**
 8. F12+ Data Enrichment
 
 F6 creates neutral spatial units only. It does not calculate metrics, suitability,
@@ -22,7 +22,9 @@ normalization, immutable normalized runs, and explicit-weight on-demand scoring.
 production rollout is complete with twelve current normalized runs covering all 36,292
 analysis cells. F10-R1's stateless prepare/MVT implementation and overlay behavior are
 accepted, but its visual QA exposed low color sensitivity and insufficient 200 m detail.
-F10-R2 adds a pure display-range transform, proves a genuine 580,597-cell 50 m target in
-isolation, and prototypes Auto/200 m/50 m selection without a schema change or persisted
-composite. F10 remains open until separately authorized 50 m data publication, artifact
-rollout, and visual acceptance. F11 has not started.
+F10-R2 adds a pure display-range transform and the genuine 580,597-cell 50 m production
+target without a persisted composite. Its data/runtime rollout and visual acceptance are
+complete. F11A implements eight smooth-accessibility inputs and an ephemeral explicit-
+weight Scenario Builder. Its production data, migration 0015, and artifact rollout remain
+separately authorized actions; saved scenarios, recommendations, and later F11 scope have
+not started.

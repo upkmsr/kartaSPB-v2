@@ -50,6 +50,13 @@ versions; no F10-R2 migration is needed. Color contrast is a frontend-only paint
 and is deliberately separate from both stored scores and grid resolution. See
 [heatmap.md](heatmap.md).
 
+F11A also persists no composite or user preference. Eight smooth-accessibility metrics
+reuse the F8 immutable raw-run and F9 immutable normalized-run contracts; the Scenario
+Builder sends explicit weights and receives the existing immutable heatmap plan. District
+relative contrast is a read-only percentile query over the selected district cells. See
+[smooth-accessibility.md](smooth-accessibility.md) and
+[scenario-builder.md](scenario-builder.md).
+
 ## Source registry
 
 `meta.dataset_sources` records stable identity and provenance: name, provider, type, URL, licence, attribution, provider version, SHA-256, local filename, download time, and upstream modification time. OSM values originate in `config/osm/source.json`, not Python constants.
@@ -160,6 +167,13 @@ F10 and F10-R2 require no Alembic revision. Their prepare response and tile spec
 stateless; existing F8/F9 immutable rows remain the only analytical inputs and user
 scenarios remain deferred to F11. Parameterized grid generation is application code, not
 schema mutation; production publication of another grid remains an explicit data rollout.
+
+Revision `20261008_0015` adds exactly one concurrent covering index on
+`analytics.analysis_cells (grid_version, district_id, cell_id)`. It closes the access-path
+gap for bounded district distribution and contains no table rewrite, data publication,
+trigger, column, constraint, or metric row. Its upgrade and downgrade deliberately run
+outside Alembic's normal transaction by using an autocommit block for PostgreSQL
+`CREATE/DROP INDEX CONCURRENTLY`.
 # Category Engine (FOUNDATION 3B)
 
 The canonical catalog remains provider-independent. Category definitions live in

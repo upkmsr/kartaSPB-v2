@@ -1,0 +1,12 @@
+{
+  "dimensions": [
+    {"key": "kindergarten", "label": "Детские сады", "group": "education", "group_label": "Образование", "metric_key": "education.kindergarten.accessibility_index", "display_order": 10, "enabled": true},
+    {"key": "school", "label": "Школы", "group": "education", "group_label": "Образование", "metric_key": "education.school.accessibility_index", "display_order": 20, "enabled": true},
+    {"key": "public_transport", "label": "Общественный транспорт", "group": "transport", "group_label": "Транспорт", "metric_key": "transport.stop.accessibility_index", "display_order": 30, "enabled": true},
+    {"key": "clinic", "label": "Поликлиники", "group": "healthcare", "group_label": "Медицина", "metric_key": "healthcare.clinic.accessibility_index", "display_order": 40, "enabled": true},
+    {"key": "hospital", "label": "Больницы", "group": "healthcare", "group_label": "Медицина", "metric_key": "healthcare.hospital.accessibility_index", "display_order": 50, "enabled": true},
+    {"key": "pharmacy", "label": "Аптеки", "group": "healthcare", "group_label": "Медицина", "metric_key": "healthcare.pharmacy.accessibility_index", "display_order": 60, "enabled": true},
+    {"key": "park", "label": "Парки", "group": "nature", "group_label": "Природа", "metric_key": "nature.park.accessibility_index", "display_order": 70, "enabled": true},
+    {"key": "water", "label": "Вода / набережные", "group": "nature", "group_label": "Природа", "metric_key": "nature.water.accessibility_index", "display_order": 80, "enabled": true}
+  ]
+}

@@ -7,7 +7,9 @@ from sqlalchemy import Connection, create_engine, text
 from app.analytics.metrics.catalog import (
     CatalogCountWithinRadiusProvider,
     CatalogNearestDistanceProvider,
+    CatalogSmoothInfluenceProvider,
     MetricProviderError,
+    smooth_influence,
 )
 from app.analytics.metrics.contracts import MetricDefinition
 from app.analytics.metrics.providers import MetricProviderContext
@@ -54,6 +56,36 @@ def insert_object(connection: Connection, object_id: UUID, name: str, metric_wkt
         ),
         {"id": object_id, "name": name, "wkt": metric_wkt},
     )
+
+
+def smooth_definition(key: str, category_key: str, radius_m: float) -> MetricDefinition:
+    return MetricDefinition.model_validate(
+        {
+            "key": key,
+            "definition_version": "1",
+            "label": "Smooth fixture",
+            "description": "Compact quartic provider fixture",
+            "group": "test",
+            "unit": "index",
+            "value_semantics": "index",
+            "preferred_direction": "higher_better",
+            "provider_key": "catalog.smooth_influence",
+            "calculation_version": "compact-quartic-v1",
+            "provider_config": {"category_key": category_key, "radius_m": radius_m},
+        }
+    )
+
+
+def test_smooth_influence_is_monotonic_continuous_and_accumulates() -> None:
+    radius = 1000.0
+    samples = [smooth_influence(distance, radius) for distance in range(0, 1001, 50)]
+    assert samples[0] == 1.0
+    assert samples[-1] == 0.0
+    assert all(left > right for left, right in zip(samples, samples[1:], strict=False))
+    assert smooth_influence(999.0, radius) > 0
+    assert smooth_influence(1000.0, radius) == 0
+    assert smooth_influence(1001.0, radius) == 0
+    assert 3 * smooth_influence(700.0, radius) > smooth_influence(600.0, radius)
 
 
 @pytest.mark.integration
@@ -224,6 +256,32 @@ def test_catalog_providers_collapse_facilities_and_fingerprint_inputs() -> None:
             MetricProviderContext(engine, boundary_count_definition, grid_version)
         )
         assert [value for _, value in boundary_counted.values] == [2.0, 2.0, 1.0]
+
+        smooth = CatalogSmoothInfluenceProvider().calculate(
+            MetricProviderContext(
+                engine,
+                smooth_definition(
+                    f"test.f8_{suffix}.smooth", category_key, radius_m=500
+                ),
+                grid_version,
+            )
+        )
+        assert smooth.diagnostics["target_count"] == 3
+        assert smooth.diagnostics["kernel"] == "compact_quartic_v1"
+        assert smooth.diagnostics["spatial_match_count"] == 5
+        assert [value for _, value in smooth.values] == pytest.approx(
+            [1.4096, 1.1296, 0.1296]
+        )
+        changed_radius = CatalogSmoothInfluenceProvider().calculate(
+            MetricProviderContext(
+                engine,
+                smooth_definition(
+                    f"test.f8_{suffix}.smooth_wide", category_key, radius_m=600
+                ),
+                grid_version,
+            )
+        )
+        assert changed_radius.input_fingerprint != smooth.input_fingerprint
 
         with engine.begin() as connection:
             connection.execute(

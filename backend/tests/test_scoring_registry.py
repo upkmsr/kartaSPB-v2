@@ -46,9 +46,12 @@ def normalization(
     )
 
 
-def test_production_normalization_registry_has_exactly_twelve_valid_profiles() -> None:
+def test_production_normalization_registry_has_existing_and_smooth_profiles() -> None:
     registry = NormalizationRegistry.load()
-    assert len(registry.list()) == 12
+    assert len(registry.list()) == 20
+    assert len(
+        [item for item in registry.list() if item.metric_key.endswith(".accessibility_index")]
+    ) == 8
     assert len(registry.checksum()) == 64
     assert {definition.normalization_version for definition in registry.list()} == {"1"}
     assert {definition.method.value for definition in registry.list()} == {
