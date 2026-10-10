@@ -8,11 +8,18 @@ import type {
 } from "../map/mapTypes";
 import { ObjectCard } from "./ObjectCard";
 import type { MapSelection } from "../map/layerContract";
-import type { PreparedHeatmap } from "../api/heatmap";
+import {
+  fetchScenarioExplanation,
+  type PreparedHeatmap,
+} from "../api/heatmap";
 import {
   DEFAULT_HEATMAP_DISPLAY_RANGE,
   type HeatmapDisplayRange,
 } from "../map/heatmapOverlay";
+import {
+  ScenarioExplanationCard,
+  type ScenarioExplanationState,
+} from "./ScenarioExplanationCard";
 
 export type MapWorkspaceProps = {
   visibleLayerIds: ReadonlySet<string>;
@@ -23,6 +30,7 @@ export type MapWorkspaceProps = {
   objectSelection: { id: string; origin: "map" | "search" } | null;
   activeHeatmap?: PreparedHeatmap | null;
   heatmapDisplayRange?: HeatmapDisplayRange;
+  heatmapInspectionEnabled?: boolean;
   onObjectSelect: (objectId: string) => void;
   onObjectClose: () => void;
   onZoomChange: (zoom: number) => void;
@@ -66,6 +74,7 @@ export function MapWorkspace({
   objectSelection,
   activeHeatmap = null,
   heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
+  heatmapInspectionEnabled = false,
   onObjectSelect,
   onObjectClose,
   onZoomChange,
@@ -75,6 +84,11 @@ export function MapWorkspace({
   const [requestState, setRequestState] = useState<MapRequestState>({ status: "idle" });
   const [cardState, setCardState] = useState<ObjectCardState>({ status: "closed" });
   const detailSequenceRef = useRef(0);
+  const explanationSequenceRef = useRef(0);
+  const explanationControllerRef = useRef<AbortController | null>(null);
+  const [explanationState, setExplanationState] = useState<ScenarioExplanationState>({
+    status: "closed",
+  });
   const selectedObjectId = objectSelection?.id ?? null;
 
   useEffect(() => {
@@ -135,6 +149,46 @@ export function MapWorkspace({
     [onObjectSelect],
   );
 
+  useEffect(() => {
+    explanationControllerRef.current?.abort();
+    explanationSequenceRef.current += 1;
+    setExplanationState({ status: "closed" });
+  }, [activeHeatmap?.scoring_signature, heatmapInspectionEnabled]);
+
+  const explainCell = useCallback((cellId: string) => {
+    if (!heatmapInspectionEnabled || !activeHeatmap) return;
+    explanationControllerRef.current?.abort();
+    const controller = new AbortController();
+    explanationControllerRef.current = controller;
+    const sequence = ++explanationSequenceRef.current;
+    const signature = activeHeatmap.scoring_signature;
+    setExplanationState({ status: "loading", cellId });
+    void fetchScenarioExplanation(
+      { cell_id: cellId, spec: activeHeatmap.spec },
+      controller.signal,
+    )
+      .then((explanation) => {
+        if (
+          !controller.signal.aborted &&
+          sequence === explanationSequenceRef.current &&
+          explanation.scoring_signature === signature
+        ) {
+          setExplanationState({ status: "loaded", explanation });
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted && sequence === explanationSequenceRef.current) {
+          setExplanationState({ status: "error", cellId });
+        }
+      });
+  }, [activeHeatmap, heatmapInspectionEnabled]);
+
+  const closeExplanation = useCallback(() => {
+    explanationControllerRef.current?.abort();
+    explanationSequenceRef.current += 1;
+    setExplanationState({ status: "closed" });
+  }, []);
+
   return (
     <main className="map-workspace" aria-label="Рабочая область карты">
       <MapView
@@ -146,14 +200,17 @@ export function MapWorkspace({
         selectedFeatureId={selectedObjectId}
         activeHeatmap={activeHeatmap}
         heatmapDisplayRange={heatmapDisplayRange}
+        heatmapInspectionEnabled={heatmapInspectionEnabled}
         onSelection={handleMapSelection}
         onVisibleFeatureIdsChange={handleVisibleFeatureIds}
         onRequestStateChange={handleRequestStateChange}
         onZoomChange={onZoomChange}
         onHeatmapError={onHeatmapError}
+        onHeatmapCellSelect={explainCell}
       />
       <RequestStatus state={requestState} />
       <ObjectCard state={cardState} onClose={closeCard} />
+      <ScenarioExplanationCard state={explanationState} onClose={closeExplanation} />
     </main>
   );
 }

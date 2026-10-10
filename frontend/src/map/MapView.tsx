@@ -82,11 +82,13 @@ export type MapViewProps = {
   selectedFeatureId: string | null;
   activeHeatmap?: PreparedHeatmap | null;
   heatmapDisplayRange?: HeatmapDisplayRange;
+  heatmapInspectionEnabled?: boolean;
   onSelection: (selection: MapSelection) => void;
   onVisibleFeatureIdsChange: (visibleIds: ReadonlySet<string>) => void;
   onRequestStateChange: (state: MapRequestState) => void;
   onZoomChange: (zoom: number) => void;
   onHeatmapError?: () => void;
+  onHeatmapCellSelect?: (cellId: string) => void;
 };
 
 export function MapView({
@@ -98,11 +100,13 @@ export function MapView({
   selectedFeatureId,
   activeHeatmap = null,
   heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
+  heatmapInspectionEnabled = false,
   onSelection,
   onVisibleFeatureIdsChange,
   onRequestStateChange,
   onZoomChange,
   onHeatmapError = () => undefined,
+  onHeatmapCellSelect = () => undefined,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -117,6 +121,8 @@ export function MapView({
   const onRequestStateChangeRef = useRef(onRequestStateChange);
   const onZoomChangeRef = useRef(onZoomChange);
   const onHeatmapErrorRef = useRef(onHeatmapError);
+  const heatmapInspectionEnabledRef = useRef(heatmapInspectionEnabled);
+  const onHeatmapCellSelectRef = useRef(onHeatmapCellSelect);
   const latestDataRef = useRef<CatalogFeatureCollection>(EMPTY_FEATURE_COLLECTION);
   const latestSuccessfulStateRef = useRef<
     Extract<MapRequestState, { status: "ready" | "empty" }> | null
@@ -142,6 +148,8 @@ export function MapView({
   onRequestStateChangeRef.current = onRequestStateChange;
   onZoomChangeRef.current = onZoomChange;
   onHeatmapErrorRef.current = onHeatmapError;
+  heatmapInspectionEnabledRef.current = heatmapInspectionEnabled;
+  onHeatmapCellSelectRef.current = onHeatmapCellSelect;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -359,11 +367,25 @@ export function MapView({
     });
     map.on("mousemove", (event: maplibregl.MapMouseEvent) => {
       const layers = interactiveRenderLayerIds.filter((id) => map.getLayer(id));
-      const interactive =
+      const heatmapInteractive =
+        heatmapInspectionEnabledRef.current &&
+        Boolean(map.getLayer(HEATMAP_LAYER_ID)) &&
+        map.queryRenderedFeatures(event.point, { layers: [HEATMAP_LAYER_ID] }).length > 0;
+      const interactive = heatmapInteractive ||
         layers.length > 0 && map.queryRenderedFeatures(event.point, { layers }).length > 0;
       map.getCanvas().style.cursor = interactive ? "pointer" : "";
     });
     map.on("click", (event: maplibregl.MapMouseEvent) => {
+      if (heatmapInspectionEnabledRef.current && map.getLayer(HEATMAP_LAYER_ID)) {
+        const heatmapFeature = map.queryRenderedFeatures(event.point, {
+          layers: [HEATMAP_LAYER_ID],
+        })[0];
+        const cellId = heatmapFeature?.properties?.cell_id;
+        if (typeof cellId === "string" && cellId.length > 0) {
+          onHeatmapCellSelectRef.current(cellId);
+          return;
+        }
+      }
       const layers = interactiveRenderLayerIds.filter((id) => map.getLayer(id));
       if (layers.length === 0) return;
       const feature = map.queryRenderedFeatures(event.point, { layers })[0];

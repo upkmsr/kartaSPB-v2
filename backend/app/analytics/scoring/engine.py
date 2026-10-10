@@ -356,31 +356,29 @@ class ScoringService:
             "grid_version": plan.grid_version,
             "district_ids": list(selected_districts),
             "total_weight": plan.total_weight,
+            "selected_count": len(plan.metrics),
         }
-        score_joins: list[str] = []
-        weighted_terms: list[str] = []
+        value_rows: list[str] = []
         for index, metric in enumerate(plan.metrics):
-            alias = f"score_{index}"
-            score_joins.append(
-                "JOIN analytics.cell_metric_scores AS "
-                f"{alias} ON {alias}.score_run_id = CAST(:run_{index} AS uuid) "
-                f"AND {alias}.cell_id = cell.cell_id "
-            )
-            weighted_terms.append(
-                f"{alias}.score::numeric * CAST(:weight_{index} AS numeric)"
+            value_rows.append(
+                f"(CAST(:run_{index} AS uuid), "
+                f"CAST(:weight_{index} AS double precision))"
             )
             params[f"run_{index}"] = str(metric.score_run_id)
             params[f"weight_{index}"] = metric.weight
         query = text(
-            "WITH district_cells AS MATERIALIZED ("
+            "WITH selected(score_run_id, weight) AS (VALUES "
+            + ",".join(value_rows)
+            + "), district_cells AS MATERIALIZED ("
             "SELECT cell_id FROM analytics.analysis_cells "
             "WHERE grid_version = :grid_version AND district_id = ANY(:district_ids)"
             "), scored AS ("
-            "SELECT cell.cell_id, ("
-            + "+".join(weighted_terms)
-            + ") / CAST(:total_weight AS numeric) AS score "
+            "SELECT cell.cell_id, "
+            "sum(score.score * selected.weight) / :total_weight AS score "
             "FROM district_cells AS cell "
-            + "".join(score_joins)
+            "JOIN analytics.cell_metric_scores AS score ON score.cell_id = cell.cell_id "
+            "JOIN selected ON selected.score_run_id = score.score_run_id "
+            "GROUP BY cell.cell_id HAVING count(*) = :selected_count"
             + ") SELECT count(*) AS cell_count, "
             "percentile_cont(ARRAY[0.10,0.25,0.50,0.75,0.90]) "
             "WITHIN GROUP (ORDER BY score) AS quantiles FROM scored"
@@ -393,6 +391,7 @@ class ScoringService:
             if int(known or 0) != len(selected_districts):
                 raise ScoringError("one or more districts are unknown or disabled")
             connection.execute(text("SET LOCAL jit = off"))
+            connection.execute(text("SET LOCAL enable_seqscan = off"))
             row = connection.execute(query, params).mappings().one()
         if not row["cell_count"] or row["quantiles"] is None:
             raise ScoringError("district scoring distribution produced no cells")

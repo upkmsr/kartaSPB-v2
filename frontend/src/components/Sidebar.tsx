@@ -31,6 +31,7 @@ export type SidebarProps = {
   heatmapOwner: "scenario" | "single" | null;
   heatmapDisplayRange?: HeatmapDisplayRange;
   heatmapTileError: string | null;
+  heatmapInspectionEnabled: boolean;
   zoom: number;
   onExpandedChange: (expanded: boolean) => void;
   onDistrictToggle: (districtId: string) => void;
@@ -47,6 +48,7 @@ export type SidebarProps = {
   onSingleHeatmapPrepared: (heatmap: PreparedHeatmap) => void;
   onHeatmapDisplayRangeChange?: (range: HeatmapDisplayRange) => void;
   onHeatmapHide: () => void;
+  onHeatmapInspectionEnabledChange: (enabled: boolean) => void;
 };
 
 export function Sidebar({
@@ -65,6 +67,7 @@ export function Sidebar({
   heatmapOwner,
   heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
   heatmapTileError,
+  heatmapInspectionEnabled,
   zoom,
   onExpandedChange,
   onDistrictToggle,
@@ -81,6 +84,7 @@ export function Sidebar({
   onSingleHeatmapPrepared,
   onHeatmapDisplayRangeChange = () => undefined,
   onHeatmapHide,
+  onHeatmapInspectionEnabledChange,
 }: SidebarProps) {
   return (
     <aside
@@ -128,10 +132,12 @@ export function Sidebar({
             districtIds={districtIds}
             zoom={zoom}
             tileError={heatmapOwner === "scenario" ? heatmapTileError : null}
+            inspectEnabled={heatmapInspectionEnabled}
             displayRange={heatmapDisplayRange}
             onPrepared={onScenarioPrepared}
             onDisplayRangeChange={onHeatmapDisplayRangeChange}
             onHide={onHeatmapHide}
+            onInspectEnabledChange={onHeatmapInspectionEnabledChange}
           />
 
           <details className="single-metric-view">

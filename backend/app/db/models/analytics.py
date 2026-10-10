@@ -218,7 +218,12 @@ class CellMetricScore(Base):
             name="score_finite",
         ),
         CheckConstraint("score >= 0 AND score <= 100", name="score_in_range"),
-        Index("ix_analytics_cell_metric_scores_cell_id", "cell_id"),
+        Index(
+            "ix_analytics_cell_metric_scores_cell_run_cover",
+            "cell_id",
+            "score_run_id",
+            postgresql_include=["score"],
+        ),
         {"schema": "analytics"},
     )
 

@@ -92,15 +92,28 @@ def test_production_registry_contains_exact_f8_contract() -> None:
         "transport.stop.count_500m",
         "transport.stop.distance_m",
     ]
-    assert {definition.definition_version for definition in definitions} == {"1"}
+    accessibility = [
+        definition for definition in definitions
+        if definition.key.endswith("accessibility_index")
+    ]
+    legacy = [
+        definition for definition in definitions
+        if not definition.key.endswith("accessibility_index")
+    ]
+    assert {definition.definition_version for definition in accessibility} == {"2"}
+    assert {definition.definition_version for definition in legacy} == {"1"}
     assert {definition.calculation_version for definition in definitions} == {
         "catalog-spatial-v1",
-        "compact-quartic-v1",
+        "nearest-primary-bounded-bonus-v2",
+        "park-size-proximity-v2",
+        "water-nearest-geometry-v2",
     }
     assert {definition.provider_key for definition in definitions} == {
         "catalog.nearest_distance",
         "catalog.count_within_radius",
-        "catalog.smooth_influence",
+        "catalog.primary_accessibility",
+        "catalog.park_accessibility",
+        "catalog.water_accessibility",
     }
 
 

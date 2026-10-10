@@ -50,6 +50,31 @@ export type ScoreDistribution = {
   p90: number;
 };
 
+export type ScenarioExplanationTarget = {
+  object_id: string;
+  name: string | null;
+  geometry_type: string;
+  distance_m: number;
+  area_m2: number | null;
+};
+
+export type ScenarioExplanationFactor = {
+  metric_key: string;
+  label: string;
+  weight: number;
+  individual_score: number;
+  contribution: number;
+  target: ScenarioExplanationTarget | null;
+};
+
+export type ScenarioExplanation = {
+  grid_version: string;
+  cell_id: string;
+  scoring_signature: string;
+  score: number;
+  factors: ScenarioExplanationFactor[];
+};
+
 export class HeatmapApiError extends Error {
   constructor(
     message: string,
@@ -100,6 +125,17 @@ export const fetchScoreDistribution = (
   signal?: AbortSignal,
 ): Promise<ScoreDistribution> =>
   apiJson<ScoreDistribution>(`${apiBaseUrl}/api/analysis/scoring/distribution`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    signal,
+  });
+
+export const fetchScenarioExplanation = (
+  request: { cell_id: string; spec: string },
+  signal?: AbortSignal,
+): Promise<ScenarioExplanation> =>
+  apiJson<ScenarioExplanation>(`${apiBaseUrl}/api/analysis/scenarios/explain`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),

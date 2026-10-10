@@ -53,7 +53,18 @@ def test_production_normalization_registry_has_existing_and_smooth_profiles() ->
         [item for item in registry.list() if item.metric_key.endswith(".accessibility_index")]
     ) == 8
     assert len(registry.checksum()) == 64
-    assert {definition.normalization_version for definition in registry.list()} == {"1"}
+    accessibility = [
+        definition
+        for definition in registry.list()
+        if definition.metric_key.endswith(".accessibility_index")
+    ]
+    legacy = [
+        definition
+        for definition in registry.list()
+        if not definition.metric_key.endswith(".accessibility_index")
+    ]
+    assert {definition.normalization_version for definition in accessibility} == {"2"}
+    assert {definition.normalization_version for definition in legacy} == {"1"}
     assert {definition.method.value for definition in registry.list()} == {
         "piecewise_linear"
     }

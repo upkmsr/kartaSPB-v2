@@ -47,9 +47,11 @@ const props = {
   zoom: 12,
   displayRange: { min: 40, max: 100 },
   tileError: null,
+  inspectEnabled: false,
   onPrepared: vi.fn(),
   onDisplayRangeChange: vi.fn(),
   onHide: vi.fn(),
+  onInspectEnabledChange: vi.fn(),
 };
 
 afterEach(() => vi.restoreAllMocks());
@@ -217,6 +219,14 @@ it("does not prepare again for contrast-only changes and can show an unchanged h
   fireEvent.click(screen.getByRole("button", { name: "Средний" }));
   expect(onDisplayRangeChange).toHaveBeenCalledWith({ min: 25, max: 100 });
   expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/heatmap/prepare"))).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Очень высокий" }));
+  expect(onDisplayRangeChange).toHaveBeenCalledWith({ min: 70, max: 100 });
+  fireEvent.click(screen.getByRole("button", { name: "Вручную" }));
+  fireEvent.change(screen.getByRole("slider", { name: "Минимальный отображаемый балл" }), {
+    target: { value: "82" },
+  });
+  expect(onDisplayRangeChange).toHaveBeenCalledWith({ min: 82, max: 100 });
+  expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/heatmap/prepare"))).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "Скрыть" }));
   expect(onHide).toHaveBeenCalledOnce();
   rerender(
@@ -231,6 +241,42 @@ it("does not prepare again for contrast-only changes and can show an unchanged h
   );
   fireEvent.click(screen.getByRole("button", { name: "Показать сценарий" }));
   await waitFor(() => expect(onPrepared).toHaveBeenCalledTimes(2));
+});
+
+it("aborts an in-flight prepare and clears the scenario when all weights become zero", async () => {
+  const onPrepared = vi.fn();
+  const onHide = vi.fn();
+  let resolvePrepare: ((response: Response) => void) | undefined;
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+    if (String(input).includes("/scenarios/dimensions")) {
+      return Promise.resolve(jsonResponse(dimensions));
+    }
+    return new Promise<Response>((resolve) => { resolvePrepare = resolve; });
+  });
+  const { rerender } = render(
+    <ScenarioBuilder {...props} onPrepared={onPrepared} onHide={onHide} />,
+  );
+  await screen.findAllByRole("slider");
+  fireEvent.click(screen.getByRole("button", { name: "Все поровну" }));
+  fireEvent.click(screen.getByRole("button", { name: "Показать сценарий" }));
+  await waitFor(() => expect(resolvePrepare).toBeDefined());
+  rerender(
+    <ScenarioBuilder
+      {...props}
+      active
+      activeHeatmap={prepared()}
+      onPrepared={onPrepared}
+      onHide={onHide}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Сбросить" }));
+  const prepareCall = fetchMock.mock.calls.find(([input]) => String(input).includes("/heatmap/prepare"));
+  expect((prepareCall?.[1] as RequestInit).signal?.aborted).toBe(true);
+  expect(onHide).toHaveBeenCalled();
+  expect(screen.getByText("Выберите хотя бы один приоритет")).toBeInTheDocument();
+  resolvePrepare?.(jsonResponse(prepared()));
+  await new Promise((resolve) => window.setTimeout(resolve, 0));
+  expect(onPrepared).not.toHaveBeenCalled();
 });
 
 it("blocks manual 50 m below z13 and derives district-only display quantiles", async () => {
@@ -266,4 +312,28 @@ it("blocks manual 50 m below z13 and derives district-only display quantiles", a
   fireEvent.click(screen.getByRole("button", { name: "По району" }));
   expect(await screen.findAllByText("Сравнение внутри выбранного района")).toHaveLength(2);
   await waitFor(() => expect(onDisplayRangeChange).toHaveBeenCalledWith({ min: 31, max: 84 }));
+});
+
+it("exposes an explicit score inspector only for an active scenario", async () => {
+  const onInspectEnabledChange = vi.fn();
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(dimensions));
+  const { rerender } = render(
+    <ScenarioBuilder
+      {...props}
+      onInspectEnabledChange={onInspectEnabledChange}
+    />,
+  );
+  await screen.findAllByRole("slider");
+  expect(screen.queryByRole("button", { name: "Почему здесь такой балл?" })).not.toBeInTheDocument();
+
+  rerender(
+    <ScenarioBuilder
+      {...props}
+      active
+      activeHeatmap={prepared()}
+      onInspectEnabledChange={onInspectEnabledChange}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Почему здесь такой балл?" }));
+  expect(onInspectEnabledChange).toHaveBeenCalledWith(true);
 });

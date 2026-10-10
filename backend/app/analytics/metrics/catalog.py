@@ -37,6 +37,24 @@ class CatalogSmoothInfluenceConfig(CatalogNearestDistanceConfig):
     radius_m: float = Field(gt=0)
 
 
+class CatalogPrimaryAccessibilityConfig(CatalogNearestDistanceConfig):
+    half_distance_m: float = Field(gt=0)
+    cutoff_multiplier: float = Field(default=4.0, ge=3.0, le=6.0)
+    extra_bonus_cap: float = Field(default=0.2, ge=0.0, le=0.35)
+    extra_saturation: float = Field(default=1.0, gt=0)
+
+
+class CatalogParkAccessibilityConfig(CatalogPrimaryAccessibilityConfig):
+    area_reference_m2: float = Field(gt=0)
+    minimum_size_quality: float = Field(ge=0.0, lt=1.0)
+
+
+class CatalogWaterAccessibilityConfig(CatalogPrimaryAccessibilityConfig):
+    area_reference_m2: float = Field(gt=0)
+    minimum_size_quality: float = Field(ge=0.0, lt=1.0)
+    line_quality: float = Field(gt=0.0, le=1.0)
+
+
 def smooth_influence(distance_m: float, radius_m: float) -> float:
     """Compact quartic influence with a smooth zero derivative at support."""
     if not math.isfinite(distance_m) or distance_m < 0:
@@ -47,6 +65,38 @@ def smooth_influence(distance_m: float, radius_m: float) -> float:
         return 0.0
     ratio = distance_m / radius_m
     return (1.0 - ratio * ratio) ** 2
+
+
+def proximity_influence(distance_m: float, half_distance_m: float) -> float:
+    """Unbounded Gaussian-like tail whose value is 0.5 at the configured distance."""
+    if not math.isfinite(distance_m) or distance_m < 0:
+        raise ValueError("distance_m must be finite and non-negative")
+    if not math.isfinite(half_distance_m) or half_distance_m <= 0:
+        raise ValueError("half_distance_m must be finite and positive")
+    return math.exp(-math.log(2.0) * (distance_m / half_distance_m) ** 2)
+
+
+def size_quality(area_m2: float, reference_m2: float, minimum: float) -> float:
+    """Diminishing-return geometry quality for area-backed amenities."""
+    if not math.isfinite(area_m2) or area_m2 < 0:
+        raise ValueError("area_m2 must be finite and non-negative")
+    if not math.isfinite(reference_m2) or reference_m2 <= 0:
+        raise ValueError("reference_m2 must be finite and positive")
+    if not math.isfinite(minimum) or not 0 <= minimum < 1:
+        raise ValueError("minimum must satisfy 0 <= minimum < 1")
+    return minimum + (1.0 - minimum) * (1.0 - math.exp(-area_m2 / reference_m2))
+
+
+def bounded_accessibility(
+    primary: float,
+    total: float,
+    bonus_cap: float,
+    bonus_saturation: float,
+) -> float:
+    """Keep nearest/strongest access primary and bound all additional availability."""
+    extra = max(total - primary, 0.0)
+    bonus = bonus_cap * (1.0 - math.exp(-extra / bonus_saturation))
+    return primary + (1.0 - primary) * bonus
 
 
 _CREATE_TARGETS_SQL = text(
@@ -108,6 +158,12 @@ _CREATE_TARGETS_SQL = text(
         target.source_object_ids,
         analysis.lifecycle_status AS analysis_lifecycle_status,
         analysis.geom AS geom_display,
+        GeometryType(analysis.geom) AS geometry_type,
+        CASE
+            WHEN GeometryType(analysis.geom) IN ('POLYGON', 'MULTIPOLYGON')
+            THEN ST_Area(ST_Transform(analysis.geom, :metric_srid))
+            ELSE 0.0
+        END AS area_m2,
         CASE
             WHEN analysis.geom IS NOT NULL AND ST_SRID(analysis.geom) = :display_srid
             THEN ST_Transform(analysis.geom, :metric_srid)
@@ -181,6 +237,136 @@ _SMOOTH_INFLUENCE_SQL = text(
     ) AS match ON true
     WHERE cell.grid_version = :grid_version
     GROUP BY cell.cell_id
+    ORDER BY cell.cell_id
+    """
+)
+
+_PRIMARY_ACCESSIBILITY_SQL = text(
+    """
+    SELECT
+        cell.cell_id,
+        coalesce(match.primary_influence, 0.0)
+          + (1.0 - coalesce(match.primary_influence, 0.0))
+            * :extra_bonus_cap
+            * (1.0 - exp(
+                -greatest(
+                    coalesce(match.total_influence, 0.0)
+                    - coalesce(match.primary_influence, 0.0),
+                    0.0
+                ) / :extra_saturation
+            )) AS raw_value,
+        coalesce(match.match_count, 0) AS match_count
+    FROM analytics.analysis_cells AS cell
+    LEFT JOIN LATERAL (
+        SELECT
+            max(candidate.influence) AS primary_influence,
+            sum(candidate.influence) AS total_influence,
+            count(*) AS match_count
+        FROM (
+            SELECT exp(
+                -ln(2.0) * power(
+                    ST_Distance(cell.center_metric, target.geom_metric)
+                    / :half_distance_m,
+                    2
+                )
+            ) AS influence
+            FROM f8_metric_targets AS target
+            WHERE ST_DWithin(
+                target.geom_metric,
+                cell.center_metric,
+                :cutoff_distance_m
+            )
+        ) AS candidate
+    ) AS match ON true
+    WHERE cell.grid_version = :grid_version
+    ORDER BY cell.cell_id
+    """
+)
+
+_PARK_ACCESSIBILITY_SQL = text(
+    """
+    SELECT
+        cell.cell_id,
+        coalesce(match.primary_influence, 0.0)
+          + (1.0 - coalesce(match.primary_influence, 0.0))
+            * :extra_bonus_cap
+            * (1.0 - exp(
+                -greatest(
+                    coalesce(match.total_influence, 0.0)
+                    - coalesce(match.primary_influence, 0.0),
+                    0.0
+                ) / :extra_saturation
+            )) AS raw_value,
+        coalesce(match.match_count, 0) AS match_count
+    FROM analytics.analysis_cells AS cell
+    LEFT JOIN LATERAL (
+        SELECT
+            max(candidate.influence) AS primary_influence,
+            sum(candidate.influence) AS total_influence,
+            count(*) AS match_count
+        FROM (
+            SELECT
+                (
+                    :minimum_size_quality
+                    + (1.0 - :minimum_size_quality)
+                      * (1.0 - exp(-target.area_m2 / :area_reference_m2))
+                )
+                * exp(
+                    -ln(2.0) * power(
+                        ST_Distance(cell.center_metric, target.geom_metric)
+                        / :half_distance_m,
+                        2
+                    )
+                ) AS influence
+            FROM f8_metric_targets AS target
+            WHERE ST_DWithin(
+                target.geom_metric,
+                cell.center_metric,
+                :cutoff_distance_m
+            )
+        ) AS candidate
+    ) AS match ON true
+    WHERE cell.grid_version = :grid_version
+    ORDER BY cell.cell_id
+    """
+)
+
+_WATER_ACCESSIBILITY_SQL = text(
+    """
+    SELECT
+        cell.cell_id,
+        coalesce(match.primary_influence, 0.0) AS raw_value,
+        coalesce(match.match_count, 0) AS match_count
+    FROM analytics.analysis_cells AS cell
+    LEFT JOIN LATERAL (
+        SELECT
+            max(
+                CASE
+                    WHEN target.geometry_type IN ('POLYGON', 'MULTIPOLYGON')
+                    THEN (
+                        :minimum_size_quality
+                        + (1.0 - :minimum_size_quality)
+                          * (1.0 - exp(-target.area_m2 / :area_reference_m2))
+                    )
+                    ELSE :line_quality
+                END
+                * exp(
+                    -ln(2.0) * power(
+                        ST_Distance(cell.center_metric, target.geom_metric)
+                        / :half_distance_m,
+                        2
+                    )
+                )
+            ) AS primary_influence,
+            count(*) AS match_count
+        FROM f8_metric_targets AS target
+        WHERE ST_DWithin(
+            target.geom_metric,
+            cell.center_metric,
+            :cutoff_distance_m
+        )
+    ) AS match ON true
+    WHERE cell.grid_version = :grid_version
     ORDER BY cell.cell_id
     """
 )
@@ -407,4 +593,150 @@ class CatalogSmoothInfluenceProvider:
                 "spatial_match_count": spatial_match_count,
             },
             calculation_duration_seconds=monotonic() - started,
+        )
+
+
+def _accessibility_parameters(
+    config: CatalogPrimaryAccessibilityConfig,
+    grid_version: str,
+) -> dict[str, object]:
+    return {
+        "grid_version": grid_version,
+        "half_distance_m": config.half_distance_m,
+        "cutoff_distance_m": config.half_distance_m * config.cutoff_multiplier,
+        "extra_bonus_cap": config.extra_bonus_cap,
+        "extra_saturation": config.extra_saturation,
+    }
+
+
+def _accessibility_calculation(
+    context: MetricProviderContext,
+    config: CatalogPrimaryAccessibilityConfig,
+    statement: Any,
+    parameters: dict[str, object],
+    diagnostics: dict[str, Any],
+) -> MetricCalculation:
+    started = monotonic()
+    provider_context = {
+        "provider_key": context.definition.provider_key,
+        "calculation_version": context.definition.calculation_version,
+        **context.definition.provider_config,
+    }
+    with context.engine.connect().execution_options(
+        isolation_level="REPEATABLE READ"
+    ) as connection, connection.begin():
+        fingerprint, target_count, grid_cell_count = _prepare_targets(
+            connection,
+            config.category_key,
+            context.grid_version,
+            provider_context=provider_context,
+        )
+        rows = connection.execute(statement, parameters)
+        values: list[tuple[str, float]] = []
+        spatial_match_count = 0
+        for cell_id, raw_value, match_count in rows:
+            value = float(cast(Any, raw_value))
+            if not math.isfinite(value) or value < 0 or value > 1.000000000001:
+                raise MetricProviderError(
+                    f"accessibility value outside 0..1: {cell_id}={value}"
+                )
+            values.append((str(cell_id), min(value, 1.0)))
+            spatial_match_count += int(cast(Any, match_count))
+    return MetricCalculation(
+        input_fingerprint=fingerprint,
+        values=tuple(values),
+        diagnostics={
+            "category_key": config.category_key,
+            "half_distance_m": config.half_distance_m,
+            "cutoff_distance_m": config.half_distance_m * config.cutoff_multiplier,
+            "target_count": target_count,
+            "grid_cell_count": grid_cell_count,
+            "spatial_match_count": spatial_match_count,
+            **diagnostics,
+        },
+        calculation_duration_seconds=monotonic() - started,
+    )
+
+
+class CatalogPrimaryAccessibilityProvider:
+    def calculate(self, context: MetricProviderContext) -> MetricCalculation:
+        try:
+            config = CatalogPrimaryAccessibilityConfig.model_validate(
+                context.definition.provider_config
+            )
+        except ValueError as exc:
+            raise MetricProviderError(
+                f"invalid primary-accessibility config: {exc}"
+            ) from exc
+        return _accessibility_calculation(
+            context,
+            config,
+            _PRIMARY_ACCESSIBILITY_SQL,
+            _accessibility_parameters(config, context.grid_version),
+            {
+                "model": "nearest_primary_bounded_bonus_v2",
+                "extra_bonus_cap": config.extra_bonus_cap,
+                "extra_saturation": config.extra_saturation,
+            },
+        )
+
+
+class CatalogParkAccessibilityProvider:
+    def calculate(self, context: MetricProviderContext) -> MetricCalculation:
+        try:
+            config = CatalogParkAccessibilityConfig.model_validate(
+                context.definition.provider_config
+            )
+        except ValueError as exc:
+            raise MetricProviderError(f"invalid park-accessibility config: {exc}") from exc
+        parameters = _accessibility_parameters(config, context.grid_version)
+        parameters.update(
+            {
+                "area_reference_m2": config.area_reference_m2,
+                "minimum_size_quality": config.minimum_size_quality,
+            }
+        )
+        return _accessibility_calculation(
+            context,
+            config,
+            _PARK_ACCESSIBILITY_SQL,
+            parameters,
+            {
+                "model": "park_size_proximity_v2",
+                "area_reference_m2": config.area_reference_m2,
+                "minimum_size_quality": config.minimum_size_quality,
+                "extra_bonus_cap": config.extra_bonus_cap,
+                "extra_saturation": config.extra_saturation,
+            },
+        )
+
+
+class CatalogWaterAccessibilityProvider:
+    def calculate(self, context: MetricProviderContext) -> MetricCalculation:
+        try:
+            config = CatalogWaterAccessibilityConfig.model_validate(
+                context.definition.provider_config
+            )
+        except ValueError as exc:
+            raise MetricProviderError(f"invalid water-accessibility config: {exc}") from exc
+        parameters = _accessibility_parameters(config, context.grid_version)
+        parameters.update(
+            {
+                "area_reference_m2": config.area_reference_m2,
+                "minimum_size_quality": config.minimum_size_quality,
+                "line_quality": config.line_quality,
+            }
+        )
+        return _accessibility_calculation(
+            context,
+            config,
+            _WATER_ACCESSIBILITY_SQL,
+            parameters,
+            {
+                "model": "water_nearest_geometry_v2",
+                "area_reference_m2": config.area_reference_m2,
+                "minimum_size_quality": config.minimum_size_quality,
+                "line_quality": config.line_quality,
+                "segmentation_bonus": False,
+            },
         )

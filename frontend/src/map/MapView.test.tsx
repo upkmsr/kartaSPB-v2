@@ -913,4 +913,53 @@ describe("MapView MapLibre integration", () => {
 
     expect(map.flyTo).toHaveBeenCalledWith({ center: [30.3, 59.9], zoom: 16, duration: 700 });
   });
+
+  it("routes a heatmap cell click to the inspector before catalog selection", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ type: "FeatureCollection", features: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const onHeatmapCellSelect = vi.fn();
+    const onSelection = vi.fn();
+    render(
+      <MapView
+        visibleLayerIds={defaultVisibleLayerIds()}
+        districtIds={[]}
+        navigationRequest={null}
+        selectedFeatureId={null}
+        activeHeatmap={{
+          grid_version: "spb-square-50m-v1",
+          weights: { "education.school.accessibility_index": 100 },
+          scoring_signature: "a".repeat(64),
+          spec: "immutable-spec",
+          cell_count: 580597,
+          min: 0,
+          max: 100,
+          mean: 50,
+          tile_url_template: "/tiles/{z}/{x}/{y}.mvt",
+          delivery_version: "heatmap-mvt-v1",
+        }}
+        heatmapInspectionEnabled
+        onSelection={onSelection}
+        onVisibleFeatureIdsChange={vi.fn()}
+        onRequestStateChange={vi.fn()}
+        onZoomChange={vi.fn()}
+        onHeatmapCellSelect={onHeatmapCellSelect}
+      />,
+    );
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+    map.renderedFeatures = [{
+      properties: { cell_id: "spb-square-50m-v1:1:2" },
+      layer: { id: "analysis-heatmap-fill" },
+    }];
+
+    act(() => map.emit("click", { point: { x: 10, y: 10 } }));
+
+    expect(onHeatmapCellSelect).toHaveBeenCalledWith("spb-square-50m-v1:1:2");
+    expect(onSelection).not.toHaveBeenCalled();
+  });
 });

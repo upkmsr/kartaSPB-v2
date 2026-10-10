@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 
+from app.analytics.explain import ScenarioExplanationError, ScenarioExplanationService
 from app.analytics.grid import GRID_VERSION
 from app.analytics.heatmap import (
     HEATMAP_DELIVERY_VERSION,
@@ -22,6 +23,8 @@ from app.api.schemas.analysis import (
     NormalizationDefinitionPublic,
     NormalizationPointPublic,
     ScenarioDimensionPublic,
+    ScenarioExplainRequest,
+    ScenarioExplanationPublic,
     ScoreDistributionPublic,
     ScoreDistributionRequest,
     ScoreEvaluationPublic,
@@ -61,6 +64,16 @@ def get_heatmap_service() -> HeatmapService:
 
 def get_scenario_registry() -> ScenarioRegistry:
     return ScenarioRegistry.load()
+
+
+def get_scenario_explanation_service() -> ScenarioExplanationService:
+    engine = get_engine()
+    normalizations = get_normalization_registry()
+    return ScenarioExplanationService(
+        engine,
+        ScoringService(engine, normalizations),
+        MetricRegistry.load(),
+    )
 
 
 def _public_definition(definition: object) -> MetricDefinitionPublic:
@@ -213,6 +226,23 @@ def scenario_dimensions(
         ScenarioDimensionPublic.model_validate(item, from_attributes=True)
         for item in registry.list()
     ]
+
+
+@router.post("/scenarios/explain", response_model=ScenarioExplanationPublic)
+def explain_scenario_cell(
+    request: ScenarioExplainRequest,
+    service: Annotated[
+        ScenarioExplanationService, Depends(get_scenario_explanation_service)
+    ],
+) -> ScenarioExplanationPublic:
+    try:
+        explanation = service.explain(request.cell_id, request.spec)
+    except ScenarioExplanationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    return ScenarioExplanationPublic.model_validate(explanation, from_attributes=True)
 
 
 @router.post("/heatmap/prepare", response_model=HeatmapPreparePublic)

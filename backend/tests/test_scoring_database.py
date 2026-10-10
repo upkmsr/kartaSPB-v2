@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import DBAPIError
 
+from app.analytics.explain import ScenarioExplanationService
 from app.analytics.heatmap import HeatmapError, HeatmapService
 from app.analytics.metrics.contracts import MetricDefinition
 from app.analytics.metrics.publisher import publish_metric
@@ -77,9 +78,10 @@ def test_normalized_publication_and_weighted_scoring_lifecycle(
     second_normalization = normalization(
         second_metric.key, [[0, 0], [10, 50], [20, 100]]
     )
+    metric_registry = MetricRegistry([first_metric, second_metric])
     registry = NormalizationRegistry(
         [first_normalization, second_normalization],
-        MetricRegistry([first_metric, second_metric]),
+        metric_registry,
     )
     object_id = uuid4()
     district_id = uuid4()
@@ -319,6 +321,21 @@ def test_normalized_publication_and_weighted_scoring_lifecycle(
     assert changed_signature != equal.scoring_signature
     assert heatmap.plan_from_spec(prepared.spec).scoring_signature == equal.scoring_signature
     assert heatmap.tile(prepared.scoring_signature, z, x, y, prepared.spec).payload
+
+    explanation = ScenarioExplanationService(engine, service, metric_registry).explain(
+        equal.top_cells[0].cell_id,
+        prepared.spec,
+    )
+    assert explanation.scoring_signature == prepared.scoring_signature
+    assert explanation.cell_id == equal.top_cells[0].cell_id
+    assert math.isclose(explanation.score, equal.top_cells[0].score, abs_tol=1e-12)
+    assert len(explanation.factors) == 2
+    assert all(factor.target is None for factor in explanation.factors)
+    assert math.isclose(
+        sum(factor.contribution for factor in explanation.factors),
+        explanation.score,
+        abs_tol=1e-12,
+    )
 
     version_two = normalization(
         first_metric.key, [[0, 100], [10, 40], [20, 0]], version="2"

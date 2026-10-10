@@ -126,3 +126,33 @@ class HeatmapPreparePublic(BaseModel):
     mean: float
     tile_url_template: str
     delivery_version: str
+
+
+class ScenarioExplainRequest(BaseModel):
+    cell_id: str = Field(min_length=1, max_length=160)
+    spec: str = Field(min_length=1, max_length=8192)
+
+
+class ScenarioExplanationTargetPublic(BaseModel):
+    object_id: UUID
+    name: str | None
+    geometry_type: str
+    distance_m: float
+    area_m2: float | None
+
+
+class ScenarioExplanationFactorPublic(BaseModel):
+    metric_key: str
+    label: str
+    weight: float
+    individual_score: float
+    contribution: float
+    target: ScenarioExplanationTargetPublic | None
+
+
+class ScenarioExplanationPublic(BaseModel):
+    grid_version: str
+    cell_id: str
+    scoring_signature: str
+    score: float
+    factors: list[ScenarioExplanationFactorPublic]

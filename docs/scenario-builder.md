@@ -18,10 +18,11 @@ not affect the result. The response carries the exact current normalized run IDs
 opaque heatmap spec, and the scoring signature changes when any selected run or weight
 changes. A later current-pointer update cannot alter an already prepared map.
 
-The API additions are:
+The API surface is:
 
 - `GET /api/analysis/scenarios/dimensions` for the validated presentation registry;
 - `POST /api/analysis/scoring/distribution` for district-relative p10/p25/p50/p75/p90;
+- `POST /api/analysis/scenarios/explain` for an immutable-run explanation of one cell;
 - the existing `POST /api/analysis/heatmap/prepare` and immutable MVT endpoint for map data.
 
 Prepare uses stored immutable-run summaries for bounded metadata work; it does not scan
@@ -31,8 +32,11 @@ prepare completed in 85 ms in the final isolated rehearsal.
 ## Frontend behavior
 
 The Scenario Builder is separate from the single-metric heatmap control. It provides all
-eight weights, equal/reset shortcuts, Auto/200 m/50 m resolution, and Low/Medium/High
-display contrast. Active changes are debounced for 320 ms, stale requests are aborted,
+eight weights, equal/reset shortcuts, Auto/200 m/50 m resolution, and
+Low/Medium/High/Ultra/manual display contrast. Manual contrast enforces
+`0 <= min < max <= 100`, updates only the MapLibre paint expression and legend, and never
+issues a prepare request or changes a score/signature. Active changes are debounced for
+320 ms, stale requests are aborted,
 and canonical request identities prevent duplicate prepare calls. Auto uses 200 m below
 z13 and genuine 50 m at z13 or above; manual 50 m is disabled below z13.
 
@@ -41,6 +45,21 @@ cell scores unchanged and sets the color range to the selected districts' p10–
 the district selection restores the standard high-contrast range. Distribution responses
 must match the active scoring signature before they may update the legend, preventing a
 stale request from recoloring a newer scenario.
+
+All eight zero weights mean that no personal heatmap exists. Reset aborts in-flight
+prepare/distribution requests, invalidates late responses, removes the source/layer and
+legend, and shows the neutral prompt to choose a priority. This does not affect the
+separate single-metric mode.
+
+The opt-in score inspector intercepts a heatmap-cell click before catalog selection and
+shows the total, every selected factor, weight, individual immutable-run score, weighted
+contribution, and the nearest or model-significant logical target. Park explanations also
+show the target area. Provider parameters come from the exact metric run's immutable
+definition snapshot, so an old heatmap spec cannot be explained with a newer formula.
+Target attribution is shown only while both raw and normalized runs remain the current
+pointers; historical specs retain exact scores/contributions but do not guess a target
+from a newer catalog state. Outside inspector mode, catalog click and `ObjectCard`
+behavior are unchanged.
 
 Scenario and single-metric heatmaps share the accepted MapLibre overlay lifecycle. Catalog
 layers, district selection overlay, object click/card behavior, and the optional grid layer
@@ -53,46 +72,40 @@ The 50 m city grid contains 580,597 cells. Separate indexes on `grid_version` an
 rehearsal observed approximately 7.98 seconds for one dimension and 2.01 seconds for the
 optimized all-eight request.
 
-Migration `20261008_0015` adds exactly one production-safe concurrent index:
+The original F11A migration `20261008_0015` adds the district-cell lookup index. R3 adds
+migration `20261010_0016`, which builds the score index concurrently before removing the
+superseded single-column index:
 
 ```sql
-CREATE INDEX CONCURRENTLY ix_analytics_analysis_cells_grid_district_cell
-ON analytics.analysis_cells (grid_version, district_id, cell_id);
+CREATE INDEX CONCURRENTLY ix_analytics_cell_metric_scores_cell_run_cover
+ON analytics.cell_metric_scores (cell_id, score_run_id) INCLUDE (score);
 ```
 
-The bounded query first materializes district cell IDs through an index-only scan, then
-performs exact `(score_run_id, cell_id)` lookups for each selected metric and computes the
-unchanged numeric weighted formula before `percentile_cont`. It never computes a full-city
-distribution and never loops through cells in Python.
+The bounded query materializes district cell IDs, reads their selected immutable runs
+cell-first from the covering index, groups them once, and applies the unchanged weighted
+formula before `percentile_cont`. It never computes a full-city distribution and never
+loops through cells in Python.
 
 Final production-shaped rehearsal used Frunzensky district (14,993 50 m cells):
 
-| Weights | Cold | Warm | Score rows | Result |
-| --- | ---: | ---: | ---: | --- |
-| 1 dimension | 145 ms | 114 ms | 14,993 | PASS |
-| 4 dimensions | 515 ms | 492 ms | 59,972 | PASS |
-| 8 dimensions | 809 ms | 837 ms | 119,944 | PASS hard gate |
-
-All cold observations passed the required one-second gate. The preferred 500 ms warm goal
-passed for one and four dimensions but not for all eight; this preference is recorded, not
-hidden. The all-eight plan used
-`ix_analytics_analysis_cells_grid_district_cell` with zero heap fetches, avoided a
-580,597-cell scan, and reproduced the pre-index signature, cell count, and all five
-quantiles exactly.
-
-The concurrent build took about 5 seconds in rehearsal. The index occupied 51 MiB
-(53,714,944 bytes), increased the `analysis_cells` total relation from about 358 MiB to
-409 MiB, and generated about 46.5 MiB of WAL. A production attempt must require at least
-1 GiB of verified free Docker/VM space plus a fresh validated backup; 2 GiB is the
-conservative operational gate.
+The final all-eight Frunzensky request returned its 14,993 cells' distribution in 386 ms
+after candidate restart and 422–500 ms on repeated calls. It reproduced the same scoring
+signature and five quantiles. The covering index occupies 1,274 MiB in the
+production-shaped rehearsal; its concurrent host-backed build took several minutes. A
+production attempt must require a fresh validated backup and at least 6 GiB verified free
+Docker/VM capacity for the new index, build workspace, and WAL before the old 216 MiB
+single-column index is removed.
 
 ## Rehearsal and stage boundary
 
-The all-eight representative z13 tile was 191,781 bytes, returned in 727 ms cold and
-266 ms warm, and was byte-identical across repeated requests. Distribution, prepare, and
-tile calls left all immutable run/value and current-pointer counts unchanged.
+Prepare returned in 8.7 ms. The all-eight representative z13 tile was 191,781 bytes,
+returned in 393 ms cold and 223 ms warm, and was byte-identical across repeated requests.
+Diagnostic z12 was 730,985 bytes / 1.69 s; z14 was 49,860 bytes / 42 ms. Distribution,
+prepare, explain, and tile calls left all immutable run/value and current-pointer counts
+unchanged.
 
-F11A implementation/rehearsal does not apply migration 0015 to production, publish the 16
-accessibility runs, or deploy the Scenario Builder. Production remains at Alembic
-`20261005_0014` until separate authorization. F11 is not complete: persistence, named
-presets, comparison workflows, and any recommendation policy remain future scope.
+F11A-R3 implementation/rehearsal does not publish v2 accessibility runs or switch any
+production runtime. Production remains on Alembic `20261008_0015`, its accepted v1
+metric/score pointers, backend `c830cdf`, live frontend `0bb05fa`, and preview frontend
+`c830cdf`. F11 is not complete: persistence, named presets, comparison workflows, and
+any recommendation policy remain future scope.

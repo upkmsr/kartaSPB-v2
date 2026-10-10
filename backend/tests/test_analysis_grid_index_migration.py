@@ -67,7 +67,7 @@ def test_covering_index_upgrade_downgrade_and_data_invariance() -> None:
     assert _index_count(engine) == 1
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20261008_0015"
+            "20261010_0016"
         )
         assert connection.execute(
             text(

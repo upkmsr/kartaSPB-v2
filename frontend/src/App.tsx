@@ -56,6 +56,7 @@ export function App() {
     DEFAULT_HEATMAP_DISPLAY_RANGE,
   );
   const [heatmapTileError, setHeatmapTileError] = useState<string | null>(null);
+  const [heatmapInspectionEnabled, setHeatmapInspectionEnabled] = useState(false);
   const navigationSequenceRef = useRef(0);
   const visibleLayerIds = loadingSettings.visibleLayerIds;
 
@@ -178,6 +179,7 @@ export function App() {
           heatmapOwner={heatmapOwner}
           heatmapDisplayRange={heatmapDisplayRange}
           heatmapTileError={heatmapTileError}
+          heatmapInspectionEnabled={heatmapInspectionEnabled}
           zoom={zoom}
           onExpandedChange={setSidebarExpanded}
           onDistrictToggle={toggleDistrict}
@@ -199,15 +201,18 @@ export function App() {
           }}
           onSingleHeatmapPrepared={(heatmap) => {
             setHeatmapTileError(null);
+            setHeatmapInspectionEnabled(false);
             setHeatmapOwner("single");
             setActiveHeatmap(heatmap);
           }}
           onHeatmapDisplayRangeChange={setHeatmapDisplayRange}
           onHeatmapHide={() => {
             setHeatmapTileError(null);
+            setHeatmapInspectionEnabled(false);
             setHeatmapOwner(null);
             setActiveHeatmap(null);
           }}
+          onHeatmapInspectionEnabledChange={setHeatmapInspectionEnabled}
         />
 
         <MapWorkspace
@@ -219,6 +224,7 @@ export function App() {
           objectSelection={objectSelection}
           activeHeatmap={activeHeatmap}
           heatmapDisplayRange={heatmapDisplayRange}
+          heatmapInspectionEnabled={heatmapInspectionEnabled}
           onObjectSelect={(id) => {
             setSelectedSearchResultId(null);
             setObjectSelection({ id, origin: "map" });

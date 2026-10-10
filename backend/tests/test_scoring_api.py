@@ -2,13 +2,18 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
+from app.analytics.explain import (
+    ExplanationFactor,
+    ExplanationTarget,
+    ScenarioExplanation,
+)
 from app.analytics.scoring.engine import (
     ScoredCell,
     ScoringDistribution,
     ScoringError,
     ScoringResult,
 )
-from app.api.routes.analysis import get_scoring_service
+from app.api.routes.analysis import get_scenario_explanation_service, get_scoring_service
 from app.main import app
 
 
@@ -51,6 +56,32 @@ class FakeScoringService:
             p90=90,
         )
 
+
+class FakeExplanationService:
+    def explain(self, cell_id: str, encoded_spec: str) -> ScenarioExplanation:
+        assert encoded_spec == "opaque-spec"
+        return ScenarioExplanation(
+            grid_version="spb-square-50m-v1",
+            cell_id=cell_id,
+            scoring_signature="a" * 64,
+            score=82.5,
+            factors=(
+                ExplanationFactor(
+                    metric_key="education.school.accessibility_index",
+                    label="Доступность школ",
+                    weight=100,
+                    individual_score=82.5,
+                    contribution=82.5,
+                    target=ExplanationTarget(
+                        object_id=UUID("00000000-0000-0000-0000-000000000002"),
+                        name="Школа",
+                        geometry_type="POINT",
+                        distance_m=175,
+                        area_m2=None,
+                    ),
+                ),
+            ),
+        )
 
 def test_normalization_api_exposes_existing_and_smooth_profiles(client: TestClient) -> None:
     response = client.get("/api/analysis/scoring/normalizations")
@@ -133,3 +164,21 @@ def test_distribution_and_scenario_dimension_contracts(client: TestClient) -> No
         "nature.park.accessibility_index",
         "nature.water.accessibility_index",
     }
+
+
+def test_scenario_explanation_is_bound_to_the_active_spec(client: TestClient) -> None:
+    app.dependency_overrides[get_scenario_explanation_service] = (
+        lambda: FakeExplanationService()
+    )
+    try:
+        response = client.post(
+            "/api/analysis/scenarios/explain",
+            json={"cell_id": "spb-square-50m-v1:1:2", "spec": "opaque-spec"},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["score"] == 82.5
+        assert payload["factors"][0]["target"]["name"] == "Школа"
+        assert payload["factors"][0]["contribution"] == 82.5
+    finally:
+        app.dependency_overrides.clear()

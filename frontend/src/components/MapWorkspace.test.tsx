@@ -8,9 +8,11 @@ vi.mock("../map/MapView", () => ({
   MapView: ({
     onSelection,
     onVisibleFeatureIdsChange,
+    onHeatmapCellSelect,
   }: {
     onSelection: (selection: MapSelection) => void;
     onVisibleFeatureIdsChange: (ids: ReadonlySet<string>) => void;
+    onHeatmapCellSelect: (cellId: string) => void;
   }) => (
     <>
       <button
@@ -38,6 +40,9 @@ vi.mock("../map/MapView", () => ({
       <button type="button" onClick={() => onVisibleFeatureIdsChange(new Set())}>
         Применить пустой scope
       </button>
+      <button type="button" onClick={() => onHeatmapCellSelect("spb-square-50m-v1:1:2")}>
+        Объяснить ячейку
+      </button>
       <button
         type="button"
         onClick={() =>
@@ -58,8 +63,12 @@ afterEach(() => vi.restoreAllMocks());
 
 const WorkspaceHarness = ({
   initialSelection = null,
+  inspect = false,
+  heatmapSignature = "a".repeat(64),
 }: {
   initialSelection?: { id: string; origin: "map" | "search" } | null;
+  inspect?: boolean;
+  heatmapSignature?: string;
 }) => {
   const [selection, setSelection] = useState(initialSelection);
   return (
@@ -70,6 +79,19 @@ const WorkspaceHarness = ({
       districtIds={[]}
       navigationRequest={null}
       objectSelection={selection}
+      activeHeatmap={inspect ? {
+        grid_version: "spb-square-50m-v1",
+        weights: { "education.school.accessibility_index": 100 },
+        scoring_signature: heatmapSignature,
+        spec: "immutable-spec",
+        cell_count: 580597,
+        min: 0,
+        max: 100,
+        mean: 50,
+        tile_url_template: "/tiles/{z}/{x}/{y}.mvt",
+        delivery_version: "heatmap-mvt-v1",
+      } : null}
+      heatmapInspectionEnabled={inspect}
       onObjectSelect={(id) => setSelection({ id, origin: "map" })}
       onObjectClose={() => setSelection(null)}
       onZoomChange={vi.fn()}
@@ -231,4 +253,68 @@ it("keeps an object-details failure scoped to ObjectCard", async () => {
   expect(screen.getByLabelText("Рабочая область карты")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Закрыть карточку" }));
   expect(screen.queryByLabelText("Карточка объекта")).not.toBeInTheDocument();
+});
+
+it("explains a clicked heatmap cell from the immutable active spec", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        grid_version: "spb-square-50m-v1",
+        cell_id: "spb-square-50m-v1:1:2",
+        scoring_signature: "a".repeat(64),
+        score: 73.5,
+        factors: [{
+          metric_key: "education.school.accessibility_index",
+          label: "Доступность школ",
+          weight: 100,
+          individual_score: 73.5,
+          contribution: 73.5,
+          target: {
+            object_id: "c49e54e1-3481-4b07-9f81-0b161b57b62b",
+            name: "Школа № 1",
+            geometry_type: "POINT",
+            distance_m: 412.4,
+            area_m2: null,
+          },
+        }],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+  render(<WorkspaceHarness inspect />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Объяснить ячейку" }));
+
+  await screen.findByText("73.5");
+  expect(screen.getByText("Доступность школ")).toBeInTheDocument();
+  expect(screen.getByText(/Школа № 1 · 412 м/)).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/analysis/scenarios/explain",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ cell_id: "spb-square-50m-v1:1:2", spec: "immutable-spec" }),
+    }),
+  );
+});
+
+it("clears an explanation when the active scoring signature changes", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        grid_version: "spb-square-50m-v1",
+        cell_id: "spb-square-50m-v1:1:2",
+        scoring_signature: "a".repeat(64),
+        score: 73.5,
+        factors: [],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+  const { rerender } = render(<WorkspaceHarness inspect />);
+  fireEvent.click(screen.getByRole("button", { name: "Объяснить ячейку" }));
+  await screen.findByText("73.5");
+
+  rerender(<WorkspaceHarness inspect heatmapSignature={"b".repeat(64)} />);
+
+  expect(screen.queryByLabelText("Почему здесь такой балл")).not.toBeInTheDocument();
 });

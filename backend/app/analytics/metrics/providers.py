@@ -37,7 +37,10 @@ class MetricProviderRegistry:
         from app.analytics.metrics.catalog import (
             CatalogCountWithinRadiusProvider,
             CatalogNearestDistanceProvider,
+            CatalogParkAccessibilityProvider,
+            CatalogPrimaryAccessibilityProvider,
             CatalogSmoothInfluenceProvider,
+            CatalogWaterAccessibilityProvider,
         )
 
         return cls(
@@ -45,5 +48,8 @@ class MetricProviderRegistry:
                 "catalog.nearest_distance": CatalogNearestDistanceProvider(),
                 "catalog.count_within_radius": CatalogCountWithinRadiusProvider(),
                 "catalog.smooth_influence": CatalogSmoothInfluenceProvider(),
+                "catalog.primary_accessibility": CatalogPrimaryAccessibilityProvider(),
+                "catalog.park_accessibility": CatalogParkAccessibilityProvider(),
+                "catalog.water_accessibility": CatalogWaterAccessibilityProvider(),
             }
         )
