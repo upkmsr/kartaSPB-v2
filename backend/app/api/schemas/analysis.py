@@ -128,6 +128,27 @@ class HeatmapPreparePublic(BaseModel):
     delivery_version: str
 
 
+class InfluencePrepareRequest(BaseModel):
+    grid_version: str | None = None
+    metric_keys: list[str] = Field(min_length=1, max_length=8)
+
+
+class InfluenceChannelPublic(BaseModel):
+    metric_key: str
+    score_run_id: UUID
+    property_name: str
+
+
+class InfluencePreparePublic(BaseModel):
+    grid_version: str
+    influence_signature: str
+    spec: str
+    cell_count: int
+    channels: list[InfluenceChannelPublic]
+    tile_url_template: str
+    delivery_version: str
+
+
 class ScenarioExplainRequest(BaseModel):
     cell_id: str = Field(min_length=1, max_length=160)
     spec: str = Field(min_length=1, max_length=8192)

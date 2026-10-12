@@ -8,6 +8,7 @@ import {
 import { fetchReadiness } from "./api/health";
 import type { SearchResult } from "./api/search";
 import type { PreparedHeatmap } from "./api/heatmap";
+import type { PreparedInfluence } from "./api/influence";
 import type { DistrictLoadState } from "./components/DistrictSection";
 import { MapWorkspace } from "./components/MapWorkspace";
 import { Sidebar } from "./components/Sidebar";
@@ -62,6 +63,8 @@ export function App() {
   const [heatmapTileError, setHeatmapTileError] = useState<string | null>(null);
   const [heatmapInspectionEnabled, setHeatmapInspectionEnabled] = useState(false);
   const [analysisPreferences, setAnalysisPreferences] = useState(loadAnalysisPreferences);
+  const [preparedInfluence, setPreparedInfluence] = useState<PreparedInfluence | null>(null);
+  const [accentedFactorId, setAccentedFactorId] = useState<string | null>(null);
   const navigationSequenceRef = useRef(0);
   const visibleLayerIds = loadingSettings.visibleLayerIds;
 
@@ -102,6 +105,15 @@ export function App() {
       const next = new Set(current.visibleLayerIds);
       if (next.has(layerId)) next.delete(layerId);
       else next.add(layerId);
+      return { ...current, visibleLayerIds: next };
+    });
+  };
+
+  const setLayerVisible = (layerId: string, visible: boolean) => {
+    setLoadingSettings((current) => {
+      const next = new Set(current.visibleLayerIds);
+      if (visible) next.add(layerId);
+      else next.delete(layerId);
       return { ...current, visibleLayerIds: next };
     });
   };
@@ -189,6 +201,9 @@ export function App() {
           activeAnalysisMode={analysisPreferences.activeAnalysisMode}
           scenarioWeights={analysisPreferences.scenarioWeights}
           scenarioMinScore={analysisPreferences.scenarioMinScore}
+          influenceLayers={analysisPreferences.influenceLayers}
+          preparedInfluence={preparedInfluence}
+          accentedFactorId={accentedFactorId}
           zoom={zoom}
           onExpandedChange={setSidebarExpanded}
           onDistrictToggle={toggleDistrict}
@@ -225,6 +240,19 @@ export function App() {
           onScenarioMinScoreChange={(scenarioMinScore) =>
             setAnalysisPreferences((current) => ({ ...current, scenarioMinScore }))
           }
+          onInfluenceLayersChange={(influenceLayers) =>
+            setAnalysisPreferences((current) => ({ ...current, influenceLayers }))
+          }
+          onInfluencePrepared={(prepared) => {
+            setHeatmapTileError(null);
+            setPreparedInfluence(prepared);
+          }}
+          onInfluenceHide={() => {
+            setPreparedInfluence(null);
+            setAccentedFactorId(null);
+          }}
+          onInfluenceAccentChange={setAccentedFactorId}
+          onObjectLayerVisibilityChange={setLayerVisible}
         />
 
         <MapWorkspace
@@ -235,6 +263,10 @@ export function App() {
           navigationRequest={navigationRequest}
           objectSelection={objectSelection}
           activeHeatmap={activeHeatmap}
+          activeAnalysisMode={analysisPreferences.activeAnalysisMode}
+          preparedInfluence={preparedInfluence}
+          influenceLayers={analysisPreferences.influenceLayers}
+          accentedFactorId={accentedFactorId}
           heatmapDisplayRange={heatmapDisplayRange}
           heatmapInspectionEnabled={heatmapInspectionEnabled}
           onObjectSelect={(id) => {

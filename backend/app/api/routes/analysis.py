@@ -9,6 +9,11 @@ from app.analytics.heatmap import (
     HeatmapError,
     HeatmapService,
 )
+from app.analytics.influence import (
+    INFLUENCE_DELIVERY_VERSION,
+    InfluenceError,
+    InfluenceService,
+)
 from app.analytics.metrics.registry import MetricRegistry
 from app.analytics.scenarios import ScenarioRegistry
 from app.analytics.scoring.contracts import NormalizationDefinition
@@ -19,6 +24,8 @@ from app.api.schemas.analysis import (
     CurrentMetricRunPublic,
     HeatmapPreparePublic,
     HeatmapPrepareRequest,
+    InfluencePreparePublic,
+    InfluencePrepareRequest,
     MetricDefinitionPublic,
     NormalizationDefinitionPublic,
     NormalizationPointPublic,
@@ -60,6 +67,16 @@ def get_scoring_service() -> ScoringService:
 def get_heatmap_service() -> HeatmapService:
     engine = get_engine()
     return HeatmapService(engine, ScoringService(engine, get_normalization_registry()))
+
+
+def get_influence_service() -> InfluenceService:
+    engine = get_engine()
+    scenarios = get_scenario_registry()
+    return InfluenceService(
+        engine,
+        ScoringService(engine, get_normalization_registry()),
+        {item.metric_key for item in scenarios.list()},
+    )
 
 
 def get_scenario_registry() -> ScenarioRegistry:
@@ -290,5 +307,54 @@ def heatmap_tile(
             "ETag": f'"{tile.etag}"',
             "X-KARTASPB-Scoring-Signature": tile.scoring_signature,
             "X-KARTASPB-Heatmap-Version": HEATMAP_DELIVERY_VERSION,
+        },
+    )
+
+
+@router.post("/influence/prepare", response_model=InfluencePreparePublic)
+def prepare_influence(
+    request: InfluencePrepareRequest,
+    service: Annotated[InfluenceService, Depends(get_influence_service)],
+) -> InfluencePreparePublic:
+    try:
+        prepared = service.prepare(request.grid_version or GRID_VERSION, request.metric_keys)
+    except InfluenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return InfluencePreparePublic.model_validate(prepared.to_dict())
+
+
+@router.get("/influence/tiles/{influence_signature}/{z}/{x}/{y}.mvt")
+def influence_tile(
+    influence_signature: Annotated[
+        str, Path(min_length=64, max_length=64, pattern="^[0-9a-f]{64}$")
+    ],
+    z: Annotated[int, Path(ge=0, le=22)],
+    x: Annotated[int, Path(ge=0)],
+    y: Annotated[int, Path(ge=0)],
+    spec: Annotated[str, Query(min_length=1, max_length=8192)],
+    service: Annotated[InfluenceService, Depends(get_influence_service)],
+) -> Response:
+    tile_limit = 1 << z
+    if x >= tile_limit or y >= tile_limit:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Tile coordinate is outside the zoom extent",
+        )
+    try:
+        tile = service.tile(influence_signature, z, x, y, spec)
+    except InfluenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return Response(
+        content=tile.payload,
+        media_type="application/vnd.mapbox-vector-tile",
+        headers={
+            "Cache-Control": "public, max-age=86400, immutable",
+            "ETag": f'"{tile.etag}"',
+            "X-KARTASPB-Influence-Signature": tile.influence_signature,
+            "X-KARTASPB-Influence-Version": INFLUENCE_DELIVERY_VERSION,
         },
     )

@@ -8,7 +8,10 @@ import type { SearchResult } from "../api/search";
 import type { MapRequestState } from "../map/mapTypes";
 import type { PreparedHeatmap } from "../api/heatmap";
 import { ScenarioBuilder } from "./ScenarioBuilder";
+import { IndependentLayers } from "./IndependentLayers";
 import type { AnalysisMode } from "../analysis/analysisPreferences";
+import type { IndependentLayerState } from "../analysis/analysisPreferences";
+import type { PreparedInfluence } from "../api/influence";
 import { useState } from "react";
 import {
   DEFAULT_HEATMAP_DISPLAY_RANGE,
@@ -37,6 +40,9 @@ export type SidebarProps = {
   activeAnalysisMode: AnalysisMode;
   scenarioWeights: Record<string, number>;
   scenarioMinScore: number;
+  influenceLayers: Record<string, IndependentLayerState>;
+  preparedInfluence: PreparedInfluence | null;
+  accentedFactorId: string | null;
   zoom: number;
   onExpandedChange: (expanded: boolean) => void;
   onDistrictToggle: (districtId: string) => void;
@@ -56,6 +62,11 @@ export type SidebarProps = {
   onActiveAnalysisModeChange: (mode: AnalysisMode) => void;
   onScenarioWeightsChange: (weights: Record<string, number>) => void;
   onScenarioMinScoreChange: (minimumScore: number) => void;
+  onInfluenceLayersChange: (layers: Record<string, IndependentLayerState>) => void;
+  onInfluencePrepared: (prepared: PreparedInfluence) => void;
+  onInfluenceHide: () => void;
+  onInfluenceAccentChange: (factorId: string | null) => void;
+  onObjectLayerVisibilityChange: (layerId: string, visible: boolean) => void;
 };
 
 type SidebarTab = "influence" | "composite" | "objects" | "territories" | "settings";
@@ -88,6 +99,9 @@ export function Sidebar({
   activeAnalysisMode,
   scenarioWeights,
   scenarioMinScore,
+  influenceLayers,
+  preparedInfluence,
+  accentedFactorId,
   zoom,
   onExpandedChange,
   onDistrictToggle,
@@ -107,6 +121,11 @@ export function Sidebar({
   onActiveAnalysisModeChange,
   onScenarioWeightsChange,
   onScenarioMinScoreChange,
+  onInfluenceLayersChange,
+  onInfluencePrepared,
+  onInfluenceHide,
+  onInfluenceAccentChange,
+  onObjectLayerVisibilityChange,
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<SidebarTab>(
     activeAnalysisMode === "composite" ? "composite" : "influence",
@@ -169,8 +188,19 @@ export function Sidebar({
               aria-labelledby="sidebar-tab-influence"
               hidden={activeTab !== "influence"}
             >
-              <p className="section-label">Слои влияния</p>
-              <p className="sidebar-panel__hint">Независимые аналитические факторы появятся в Gate B.</p>
+              <IndependentLayers
+                active={activeAnalysisMode === "independent"}
+                zoom={zoom}
+                layers={influenceLayers}
+                prepared={preparedInfluence}
+                accentedFactorId={accentedFactorId}
+                tileError={activeAnalysisMode === "independent" ? heatmapTileError : null}
+                onLayersChange={onInfluenceLayersChange}
+                onPrepared={onInfluencePrepared}
+                onHide={onInfluenceHide}
+                onAccentChange={onInfluenceAccentChange}
+                onObjectLayerVisibilityChange={onObjectLayerVisibilityChange}
+              />
             </section>
             <section
               id="sidebar-panel-composite"

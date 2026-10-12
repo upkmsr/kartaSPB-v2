@@ -20,6 +20,13 @@ import {
   ScenarioExplanationCard,
   type ScenarioExplanationState,
 } from "./ScenarioExplanationCard";
+import type { AnalysisMode, IndependentLayerState } from "../analysis/analysisPreferences";
+import type { PreparedInfluence } from "../api/influence";
+import { factorByMetric } from "../analysis/factorRegistry";
+import {
+  InfluenceInspectorCard,
+  type InfluenceInspection,
+} from "./InfluenceInspectorCard";
 
 export type MapWorkspaceProps = {
   visibleLayerIds: ReadonlySet<string>;
@@ -29,6 +36,10 @@ export type MapWorkspaceProps = {
   navigationRequest: MapNavigationRequest | null;
   objectSelection: { id: string; origin: "map" | "search" } | null;
   activeHeatmap?: PreparedHeatmap | null;
+  activeAnalysisMode?: AnalysisMode;
+  preparedInfluence?: PreparedInfluence | null;
+  influenceLayers?: Record<string, IndependentLayerState>;
+  accentedFactorId?: string | null;
   heatmapDisplayRange?: HeatmapDisplayRange;
   heatmapInspectionEnabled?: boolean;
   onObjectSelect: (objectId: string) => void;
@@ -73,6 +84,10 @@ export function MapWorkspace({
   navigationRequest,
   objectSelection,
   activeHeatmap = null,
+  activeAnalysisMode = "composite",
+  preparedInfluence = null,
+  influenceLayers = {},
+  accentedFactorId = null,
   heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
   heatmapInspectionEnabled = false,
   onObjectSelect,
@@ -89,6 +104,7 @@ export function MapWorkspace({
   const [explanationState, setExplanationState] = useState<ScenarioExplanationState>({
     status: "closed",
   });
+  const [influenceInspection, setInfluenceInspection] = useState<InfluenceInspection | null>(null);
   const selectedObjectId = objectSelection?.id ?? null;
 
   useEffect(() => {
@@ -151,6 +167,10 @@ export function MapWorkspace({
     setExplanationState({ status: "closed" });
   }, [activeHeatmap?.scoring_signature, heatmapInspectionEnabled]);
 
+  useEffect(() => {
+    setInfluenceInspection(null);
+  }, [activeAnalysisMode, preparedInfluence?.influence_signature, influenceLayers]);
+
   const explainCell = useCallback((cellId: string) => {
     if (!heatmapInspectionEnabled || !activeHeatmap) return;
     explanationControllerRef.current?.abort();
@@ -185,6 +205,26 @@ export function MapWorkspace({
     setExplanationState({ status: "closed" });
   }, []);
 
+  const inspectInfluenceCell = useCallback((properties: Record<string, unknown>) => {
+    if (activeAnalysisMode !== "independent" || preparedInfluence === null) return;
+    const cellId = properties.cell_id;
+    if (typeof cellId !== "string") return;
+    const scores = preparedInfluence.channels.flatMap((channel) => {
+      const factor = factorByMetric.get(channel.metric_key);
+      const score = properties[channel.property_name];
+      const state = factor ? influenceLayers[factor.id] : undefined;
+      return factor && state?.enabled && typeof score === "number"
+        ? [{
+            metricKey: channel.metric_key,
+            score,
+            minimumScore: state.minimumScore,
+            scoreRunId: channel.score_run_id,
+          }]
+        : [];
+    });
+    setInfluenceInspection({ cellId, scores });
+  }, [activeAnalysisMode, influenceLayers, preparedInfluence]);
+
   return (
     <main className="map-workspace" aria-label="Рабочая область карты">
       <MapView
@@ -194,7 +234,12 @@ export function MapWorkspace({
         districtIds={districtIds}
         navigationRequest={navigationRequest}
         selectedFeatureId={selectedObjectId}
-        activeHeatmap={activeHeatmap}
+        activeHeatmap={activeAnalysisMode === "composite" ? activeHeatmap : null}
+        activeInfluence={activeAnalysisMode === "independent" && preparedInfluence ? {
+          prepared: preparedInfluence,
+          layers: influenceLayers,
+          accentedFactorId,
+        } : null}
         heatmapDisplayRange={heatmapDisplayRange}
         heatmapInspectionEnabled={heatmapInspectionEnabled}
         onSelection={handleMapSelection}
@@ -203,10 +248,15 @@ export function MapWorkspace({
         onZoomChange={onZoomChange}
         onHeatmapError={onHeatmapError}
         onHeatmapCellSelect={explainCell}
+        onInfluenceCellSelect={inspectInfluenceCell}
       />
       <RequestStatus state={requestState} />
       <ObjectCard state={cardState} onClose={closeCard} />
       <ScenarioExplanationCard state={explanationState} onClose={closeExplanation} />
+      <InfluenceInspectorCard
+        inspection={influenceInspection}
+        onClose={() => setInfluenceInspection(null)}
+      />
     </main>
   );
 }

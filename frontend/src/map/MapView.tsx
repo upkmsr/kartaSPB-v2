@@ -45,6 +45,12 @@ import {
   type HeatmapDisplayRange,
   updateHeatmapOverlay,
 } from "./heatmapOverlay";
+import {
+  INFLUENCE_SOURCE_ID,
+  influenceLayerIds,
+  type InfluenceRenderState,
+  updateInfluenceOverlay,
+} from "./influenceOverlay";
 
 const INITIAL_CENTER: [number, number] = [30.3158, 59.9398];
 const INITIAL_ZOOM = 12;
@@ -81,6 +87,7 @@ export type MapViewProps = {
   navigationRequest: MapNavigationRequest | null;
   selectedFeatureId: string | null;
   activeHeatmap?: PreparedHeatmap | null;
+  activeInfluence?: InfluenceRenderState | null;
   heatmapDisplayRange?: HeatmapDisplayRange;
   heatmapInspectionEnabled?: boolean;
   onSelection: (selection: MapSelection) => void;
@@ -89,6 +96,7 @@ export type MapViewProps = {
   onZoomChange: (zoom: number) => void;
   onHeatmapError?: () => void;
   onHeatmapCellSelect?: (cellId: string) => void;
+  onInfluenceCellSelect?: (properties: Record<string, unknown>) => void;
 };
 
 export function MapView({
@@ -99,6 +107,7 @@ export function MapView({
   navigationRequest,
   selectedFeatureId,
   activeHeatmap = null,
+  activeInfluence = null,
   heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
   heatmapInspectionEnabled = false,
   onSelection,
@@ -107,6 +116,7 @@ export function MapView({
   onZoomChange,
   onHeatmapError = () => undefined,
   onHeatmapCellSelect = () => undefined,
+  onInfluenceCellSelect = () => undefined,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -115,6 +125,7 @@ export function MapView({
   const districtIdsRef = useRef(districtIds);
   const selectedFeatureIdRef = useRef(selectedFeatureId);
   const activeHeatmapRef = useRef(activeHeatmap);
+  const activeInfluenceRef = useRef(activeInfluence);
   const heatmapDisplayRangeRef = useRef(heatmapDisplayRange);
   const onSelectionRef = useRef<(selection: MapSelection) => void>(() => undefined);
   const onVisibleFeatureIdsChangeRef = useRef(onVisibleFeatureIdsChange);
@@ -123,6 +134,7 @@ export function MapView({
   const onHeatmapErrorRef = useRef(onHeatmapError);
   const heatmapInspectionEnabledRef = useRef(heatmapInspectionEnabled);
   const onHeatmapCellSelectRef = useRef(onHeatmapCellSelect);
+  const onInfluenceCellSelectRef = useRef(onInfluenceCellSelect);
   const latestDataRef = useRef<CatalogFeatureCollection>(EMPTY_FEATURE_COLLECTION);
   const latestSuccessfulStateRef = useRef<
     Extract<MapRequestState, { status: "ready" | "empty" }> | null
@@ -142,6 +154,7 @@ export function MapView({
   districtIdsRef.current = districtIds;
   selectedFeatureIdRef.current = selectedFeatureId;
   activeHeatmapRef.current = activeHeatmap;
+  activeInfluenceRef.current = activeInfluence;
   heatmapDisplayRangeRef.current = heatmapDisplayRange;
   onSelectionRef.current = onSelection;
   onVisibleFeatureIdsChangeRef.current = onVisibleFeatureIdsChange;
@@ -150,6 +163,7 @@ export function MapView({
   onHeatmapErrorRef.current = onHeatmapError;
   heatmapInspectionEnabledRef.current = heatmapInspectionEnabled;
   onHeatmapCellSelectRef.current = onHeatmapCellSelect;
+  onInfluenceCellSelectRef.current = onInfluenceCellSelect;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -334,6 +348,13 @@ export function MapView({
           orderedRenderDefinitions[0]?.definition.id,
         );
       }
+      if (activeInfluenceRef.current) {
+        updateInfluenceOverlay(
+          map,
+          activeInfluenceRef.current,
+          orderedRenderDefinitions[0]?.definition.id,
+        );
+      }
       installSelectedDistrictOverlay(
         map,
         latestDistrictDataRef.current,
@@ -354,6 +375,10 @@ export function MapView({
         onHeatmapErrorRef.current();
         return;
       }
+      if ((event as unknown as { sourceId?: string }).sourceId === INFLUENCE_SOURCE_ID) {
+        onHeatmapErrorRef.current();
+        return;
+      }
       if (primaryStyleUrl && !localFallbackApplied && !primaryStyleLoaded) {
         localFallbackApplied = true;
         map.setStyle(localDarkStyle);
@@ -371,11 +396,24 @@ export function MapView({
         heatmapInspectionEnabledRef.current &&
         Boolean(map.getLayer(HEATMAP_LAYER_ID)) &&
         map.queryRenderedFeatures(event.point, { layers: [HEATMAP_LAYER_ID] }).length > 0;
-      const interactive = heatmapInteractive ||
+      const activeInfluenceLayers = influenceLayerIds.filter((id) => map.getLayer(id));
+      const influenceInteractive = activeInfluenceLayers.length > 0 &&
+        map.queryRenderedFeatures(event.point, { layers: activeInfluenceLayers }).length > 0;
+      const interactive = heatmapInteractive || influenceInteractive ||
         layers.length > 0 && map.queryRenderedFeatures(event.point, { layers }).length > 0;
       map.getCanvas().style.cursor = interactive ? "pointer" : "";
     });
     map.on("click", (event: maplibregl.MapMouseEvent) => {
+      const activeInfluenceLayers = influenceLayerIds.filter((id) => map.getLayer(id));
+      if (activeInfluenceLayers.length > 0) {
+        const influenceFeature = map.queryRenderedFeatures(event.point, {
+          layers: activeInfluenceLayers,
+        })[0];
+        if (influenceFeature?.properties) {
+          onInfluenceCellSelectRef.current(influenceFeature.properties);
+          return;
+        }
+      }
       if (heatmapInspectionEnabledRef.current && map.getLayer(HEATMAP_LAYER_ID)) {
         const heatmapFeature = map.queryRenderedFeatures(event.point, {
           layers: [HEATMAP_LAYER_ID],
@@ -483,6 +521,18 @@ export function MapView({
       );
     }
   }, [activeHeatmap, heatmapDisplayRange]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (activeInfluence || influenceLayerIds.some((id) => map.getLayer(id))) {
+      updateInfluenceOverlay(
+        map,
+        activeInfluence,
+        orderedRenderDefinitions[0]?.definition.id,
+      );
+    }
+  }, [activeInfluence]);
 
   return <div ref={containerRef} className="catalog-map" aria-label="Карта Санкт-Петербурга" />;
 }
