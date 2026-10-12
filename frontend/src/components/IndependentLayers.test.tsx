@@ -20,9 +20,22 @@ const dimensions = factorRegistry.map((factor) => ({
   display_order: factor.order,
 }));
 
-const Harness = ({ onPrepared = vi.fn() }: { onPrepared?: (value: PreparedInfluence) => void }) => {
+type HarnessProps = {
+  onPrepared?: (value: PreparedInfluence) => void;
+  onObjectLayerVisibilityChange?: (layerId: string, visible: boolean) => void;
+  initialVisibleObjectLayerIds?: readonly string[];
+};
+
+const Harness = ({
+  onPrepared = vi.fn(),
+  onObjectLayerVisibilityChange = vi.fn(),
+  initialVisibleObjectLayerIds = [],
+}: HarnessProps) => {
   const [layers, setLayers] = useState<Record<string, IndependentLayerState>>({});
   const [prepared, setPrepared] = useState<PreparedInfluence | null>(null);
+  const [visibleObjectLayerIds, setVisibleObjectLayerIds] = useState(
+    new Set(initialVisibleObjectLayerIds),
+  );
   return (
     <IndependentLayers
       active
@@ -31,6 +44,7 @@ const Harness = ({ onPrepared = vi.fn() }: { onPrepared?: (value: PreparedInflue
       prepared={prepared}
       accentedFactorId={null}
       tileError={null}
+      visibleObjectLayerIds={visibleObjectLayerIds}
       onLayersChange={setLayers}
       onPrepared={(value) => {
         setPrepared(value);
@@ -38,7 +52,15 @@ const Harness = ({ onPrepared = vi.fn() }: { onPrepared?: (value: PreparedInflue
       }}
       onHide={vi.fn()}
       onAccentChange={vi.fn()}
-      onObjectLayerVisibilityChange={vi.fn()}
+      onObjectLayerVisibilityChange={(layerId, visible) => {
+        setVisibleObjectLayerIds((current) => {
+          const next = new Set(current);
+          if (visible) next.add(layerId);
+          else next.delete(layerId);
+          return next;
+        });
+        onObjectLayerVisibilityChange(layerId, visible);
+      }}
     />
   );
 };
@@ -48,9 +70,36 @@ afterEach(() => vi.restoreAllMocks());
 it("renders eight registry-backed independent factors", async () => {
   vi.spyOn(globalThis, "fetch").mockResolvedValue(json(dimensions));
   render(<Harness />);
-  expect(await screen.findByRole("checkbox", { name: "Школы" })).toBeInTheDocument();
-  expect(screen.getAllByRole("checkbox").filter((item) => item.getAttribute("aria-label") === null)).toHaveLength(16);
+  expect(await screen.findByRole("checkbox", { name: "Показывать влияние: Школы" })).toBeInTheDocument();
+  expect(screen.getAllByRole("checkbox")).toHaveLength(16);
   expect(screen.getByRole("slider", { name: "Минимальный балл влияния: Парки" })).toHaveValue("40");
+});
+
+it("keeps influence and catalog object visibility independent", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(json(dimensions));
+  const onObjectLayerVisibilityChange = vi.fn();
+  render(
+    <Harness
+      initialVisibleObjectLayerIds={["school"]}
+      onObjectLayerVisibilityChange={onObjectLayerVisibilityChange}
+    />,
+  );
+  const influence = await screen.findByRole("checkbox", {
+    name: "Показывать влияние: Школы",
+  });
+  const objects = screen.getByRole("checkbox", { name: "Показывать объекты: Школы" });
+  expect(influence).not.toBeChecked();
+  expect(objects).toBeChecked();
+
+  fireEvent.click(influence);
+  expect(influence).toBeChecked();
+  expect(objects).toBeChecked();
+  expect(onObjectLayerVisibilityChange).not.toHaveBeenCalled();
+
+  fireEvent.click(objects);
+  expect(objects).not.toBeChecked();
+  expect(influence).toBeChecked();
+  expect(onObjectLayerVisibilityChange).toHaveBeenCalledWith("school", false);
 });
 
 it("prepares once for enabled factors but not for threshold-only changes", async () => {
@@ -72,7 +121,7 @@ it("prepares once for enabled factors but not for threshold-only changes", async
   });
   const onPrepared = vi.fn();
   render(<Harness onPrepared={onPrepared} />);
-  fireEvent.click(await screen.findByRole("checkbox", { name: "Школы" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: "Показывать влияние: Школы" }));
   await waitFor(() => expect(onPrepared).toHaveBeenCalledOnce(), { timeout: 1200 });
   fireEvent.change(screen.getByRole("slider", { name: "Минимальный балл влияния: Школы" }), {
     target: { value: "82" },

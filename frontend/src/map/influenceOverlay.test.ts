@@ -23,8 +23,8 @@ const prepared: PreparedInfluence = {
 };
 
 const state = (schoolMin = 60): Record<string, IndependentLayerState> => ({
-  kindergarten: { enabled: true, minimumScore: 30, showObjects: false },
-  school: { enabled: true, minimumScore: schoolMin, showObjects: false },
+  kindergarten: { enabled: true, minimumScore: 30 },
+  school: { enabled: true, minimumScore: schoolMin },
 });
 
 const mockMap = () => {
@@ -55,21 +55,22 @@ it("installs all enabled factors from one immutable vector source", () => {
   expect(map.sources.get(INFLUENCE_SOURCE_ID)).toEqual(expect.objectContaining({
     type: "vector",
     tiles: [prepared.tile_url_template],
+    minzoom: 8,
   }));
   expect(map.layers.has(influenceLayerId("kindergarten"))).toBe(true);
   expect(map.layers.has(influenceLayerId("school"))).toBe(true);
   expect(map.addLayer).toHaveBeenCalledTimes(2);
 });
 
-it("changes one threshold through filter and paint without replacing the source", () => {
+it("lowers one threshold to expand its visible zone without replacing the source", () => {
   const map = mockMap();
-  updateInfluenceOverlay(map as never, { prepared, layers: state(), accentedFactorId: null });
-  updateInfluenceOverlay(map as never, { prepared, layers: state(85), accentedFactorId: null });
+  updateInfluenceOverlay(map as never, { prepared, layers: state(70), accentedFactorId: null });
+  updateInfluenceOverlay(map as never, { prepared, layers: state(20), accentedFactorId: null });
   expect(map.addSource).toHaveBeenCalledOnce();
   expect(map.removeSource).not.toHaveBeenCalled();
   expect(map.setFilter).toHaveBeenCalledWith(
     influenceLayerId("school"),
-    [">=", ["get", "score_1"], 85],
+    [">=", ["get", "score_1"], 20],
   );
   expect(map.setFilter).toHaveBeenCalledWith(
     influenceLayerId("kindergarten"),
@@ -89,4 +90,20 @@ it("removes only disabled factor layers and fully cleans up when hidden", () => 
   expect(map.layers.has(influenceLayerId("kindergarten"))).toBe(true);
   updateInfluenceOverlay(map as never, null);
   expect(map.sources.has(INFLUENCE_SOURCE_ID)).toBe(false);
+});
+
+it("removes the vector source when the last enabled factor is disabled", () => {
+  const map = mockMap();
+  updateInfluenceOverlay(map as never, { prepared, layers: state(), accentedFactorId: null });
+  updateInfluenceOverlay(map as never, {
+    prepared,
+    layers: {
+      kindergarten: { enabled: false, minimumScore: 30 },
+      school: { enabled: false, minimumScore: 60 },
+    },
+    accentedFactorId: null,
+  });
+  expect(map.sources.has(INFLUENCE_SOURCE_ID)).toBe(false);
+  expect(map.layers.has(influenceLayerId("kindergarten"))).toBe(false);
+  expect(map.layers.has(influenceLayerId("school"))).toBe(false);
 });

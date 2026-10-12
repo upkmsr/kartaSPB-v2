@@ -78,6 +78,10 @@ export const updateInfluenceOverlay = (
     const factor = factorByMetric.get(channel.metric_key);
     return factor !== undefined && layers[factor.id]?.enabled;
   });
+  if (enabledChannels.length === 0) {
+    removeInfluenceOverlay(map);
+    return;
+  }
   const maxOpacity = opacityForCount(enabledChannels.length);
   const signatureChanged =
     installedSignatures.get(map as object) !== prepared.influence_signature ||

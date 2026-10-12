@@ -159,6 +159,7 @@ export function MapView({
   const districtGeometryRequestRef = useRef(new LatestDistrictGeometryRequest());
   const debounceTimerRef = useRef<number | null>(null);
   const loadViewportRef = useRef<(delay?: number, force?: boolean) => void>(() => undefined);
+  const analyticalOverlaySyncRef = useRef<() => void>(() => undefined);
 
   visibleLayerIdsRef.current = visibleLayerIds;
   autoLoadRef.current = autoLoad;
@@ -345,6 +346,42 @@ export function MapView({
     };
     loadViewportRef.current = loadViewport;
 
+    let analyticalOverlayRetry: number | null = null;
+    let analyticalOverlayRetryCount = 0;
+    const syncAnalyticalOverlays = (): void => {
+      if (!map.isStyleLoaded()) {
+        if (analyticalOverlayRetry === null && analyticalOverlayRetryCount < 40) {
+          analyticalOverlayRetryCount += 1;
+          analyticalOverlayRetry = window.setTimeout(() => {
+            analyticalOverlayRetry = null;
+            syncAnalyticalOverlays();
+          }, 50);
+        }
+        return;
+      }
+      analyticalOverlayRetryCount = 0;
+      updateHeatmapOverlay(
+        map,
+        activeHeatmapRef.current,
+        heatmapDisplayRangeRef.current,
+        orderedRenderDefinitions[0]?.definition.id,
+      );
+      updateInfluenceOverlay(
+        map,
+        activeInfluenceRef.current,
+        orderedRenderDefinitions[0]?.definition.id,
+      );
+    };
+    const requestAnalyticalOverlaySync = (): void => {
+      analyticalOverlayRetryCount = 0;
+      if (analyticalOverlayRetry !== null) {
+        window.clearTimeout(analyticalOverlayRetry);
+        analyticalOverlayRetry = null;
+      }
+      syncAnalyticalOverlays();
+    };
+    analyticalOverlaySyncRef.current = requestAnalyticalOverlaySync;
+
     const installOverlay = (): void => {
       if (primaryStyleUrl === DEFAULT_STYLE_URL) alignOpenFreeMapRoadArrows(map);
       installRegisteredLayers(
@@ -356,21 +393,7 @@ export function MapView({
           selectedCanonicalId: selectedFeatureIdRef.current,
         },
       );
-      if (activeHeatmapRef.current) {
-        updateHeatmapOverlay(
-          map,
-          activeHeatmapRef.current,
-          heatmapDisplayRangeRef.current,
-          orderedRenderDefinitions[0]?.definition.id,
-        );
-      }
-      if (activeInfluenceRef.current) {
-        updateInfluenceOverlay(
-          map,
-          activeInfluenceRef.current,
-          orderedRenderDefinitions[0]?.definition.id,
-        );
-      }
+      requestAnalyticalOverlaySync();
       installSelectedDistrictOverlay(
         map,
         latestDistrictDataRef.current,
@@ -457,6 +480,8 @@ export function MapView({
     const districtGeometryRequest = districtGeometryRequestRef.current;
     return () => {
       if (debounceTimerRef.current !== null) window.clearTimeout(debounceTimerRef.current);
+      if (analyticalOverlayRetry !== null) window.clearTimeout(analyticalOverlayRetry);
+      analyticalOverlaySyncRef.current = () => undefined;
       if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
       resizeObserver?.disconnect();
       request.cancel();
@@ -531,28 +556,11 @@ export function MapView({
   }, [selectedFeatureId]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    if (activeHeatmap || map.getLayer(HEATMAP_LAYER_ID)) {
-      updateHeatmapOverlay(
-        map,
-        activeHeatmap,
-        heatmapDisplayRange,
-        orderedRenderDefinitions[0]?.definition.id,
-      );
-    }
+    analyticalOverlaySyncRef.current();
   }, [activeHeatmap, heatmapDisplayRange]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    if (activeInfluence || influenceLayerIds.some((id) => map.getLayer(id))) {
-      updateInfluenceOverlay(
-        map,
-        activeInfluence,
-        orderedRenderDefinitions[0]?.definition.id,
-      );
-    }
+    analyticalOverlaySyncRef.current();
   }, [activeInfluence]);
 
   useEffect(() => {

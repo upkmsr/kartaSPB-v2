@@ -13,6 +13,7 @@ type IndependentLayersProps = {
   prepared: PreparedInfluence | null;
   accentedFactorId: string | null;
   tileError: string | null;
+  visibleObjectLayerIds: ReadonlySet<string>;
   onLayersChange: (layers: Record<string, IndependentLayerState>) => void;
   onPrepared: (prepared: PreparedInfluence) => void;
   onHide: () => void;
@@ -24,7 +25,6 @@ type IndependentLayersProps = {
 const defaultLayerState = (): IndependentLayerState => ({
   enabled: false,
   minimumScore: 40,
-  showObjects: false,
 });
 
 export function IndependentLayers({
@@ -34,6 +34,7 @@ export function IndependentLayers({
   prepared,
   accentedFactorId,
   tileError,
+  visibleObjectLayerIds,
   onLayersChange,
   onPrepared,
   onHide,
@@ -147,15 +148,10 @@ export function IndependentLayers({
           return (
             <article className="influence-factor" key={factor.id}>
               <div className="influence-factor__title">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={state.enabled}
-                    onChange={(event) => update(factor.id, { enabled: event.target.checked })}
-                  />
+                <div className="influence-factor__identity">
                   <span className="influence-factor__swatch" style={{ background: factor.color }} aria-hidden="true" />
                   <span>{factor.label}</span>
-                </label>
+                </div>
                 <button
                   type="button"
                   aria-label={`Акцент: ${factor.label}`}
@@ -166,6 +162,15 @@ export function IndependentLayers({
                   Акцент
                 </button>
               </div>
+              <label className="influence-factor__toggle">
+                <input
+                  aria-label={`Показывать влияние: ${factor.label}`}
+                  type="checkbox"
+                  checked={state.enabled}
+                  onChange={(event) => update(factor.id, { enabled: event.target.checked })}
+                />
+                <span>Показывать влияние</span>
+              </label>
               <label className="influence-factor__threshold">
                 <span>Минимальный балл влияния</span>
                 <input
@@ -181,15 +186,13 @@ export function IndependentLayers({
               </label>
               <label className="influence-factor__objects">
                 <input
+                  aria-label={`Показывать объекты: ${factor.label}`}
                   type="checkbox"
-                  checked={state.showObjects}
-                  onChange={(event) => {
-                    const visible = event.target.checked;
-                    update(factor.id, { showObjects: visible });
-                    onObjectLayerVisibilityChange(factor.layerId, visible);
-                  }}
+                  checked={visibleObjectLayerIds.has(factor.layerId)}
+                  onChange={(event) =>
+                    onObjectLayerVisibilityChange(factor.layerId, event.target.checked)}
                 />
-                <span>Показать исходные объекты</span>
+                <span>Показывать объекты</span>
               </label>
             </article>
           );

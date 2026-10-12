@@ -6,7 +6,6 @@ export type AnalysisMode = "independent" | "composite";
 export type IndependentLayerState = {
   enabled: boolean;
   minimumScore: number;
-  showObjects: boolean;
 };
 
 export type AnalysisPreferences = {
@@ -64,14 +63,19 @@ export const loadAnalysisPreferences = (
           state !== null &&
           typeof state.enabled === "boolean" &&
           isScore(state.minimumScore) &&
-          state.minimumScore <= 99 &&
-          typeof state.showObjects === "boolean",
+          state.minimumScore <= 99,
       ),
+    );
+    const normalizedInfluenceLayers = Object.fromEntries(
+      Object.entries(influenceLayers).map(([key, state]) => [
+        key,
+        { enabled: state.enabled, minimumScore: state.minimumScore },
+      ]),
     );
     return {
       version: ANALYSIS_PREFERENCES_VERSION,
       activeAnalysisMode: value.activeAnalysisMode,
-      influenceLayers,
+      influenceLayers: normalizedInfluenceLayers,
       scenarioWeights,
       scenarioMinScore:
         isScore(value.scenarioMinScore) && value.scenarioMinScore <= 99

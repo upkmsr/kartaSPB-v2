@@ -205,6 +205,7 @@ export function Sidebar({
                 prepared={preparedInfluence}
                 accentedFactorId={accentedFactorId}
                 tileError={activeAnalysisMode === "independent" ? heatmapTileError : null}
+                visibleObjectLayerIds={visibleLayerIds}
                 onLayersChange={onInfluenceLayersChange}
                 onPrepared={onInfluencePrepared}
                 onHide={onInfluenceHide}

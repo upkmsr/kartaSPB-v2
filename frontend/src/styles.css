@@ -385,10 +385,10 @@ label:focus-visible {
   gap: 6px;
 }
 
-.influence-factor__title label {
+.influence-factor__identity {
   display: grid;
   min-width: 0;
-  grid-template-columns: 14px 8px minmax(0, 1fr);
+  grid-template-columns: 8px minmax(0, 1fr);
   align-items: center;
   gap: 7px;
   color: #d0d7d4;
@@ -444,12 +444,17 @@ label:focus-visible {
   text-align: right;
 }
 
+.influence-factor__toggle,
 .influence-factor__objects {
   display: flex;
   align-items: center;
   gap: 7px;
   color: #889390;
   font-size: 8px;
+}
+
+.influence-factor__toggle {
+  color: #c5cfcc;
 }
 
 .influence-inspector {

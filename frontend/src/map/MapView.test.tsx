@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultVisibleLayerIds, renderLayerIds } from "./layerRegistry";
 import { MapView } from "./MapView";
 import type { CatalogFeatureCollection } from "./mapTypes";
+import type { PreparedInfluence } from "../api/influence";
+import { influenceLayerId, INFLUENCE_SOURCE_ID } from "./influenceOverlay";
 
 type MockSource = { setData: ReturnType<typeof vi.fn> };
 type MockMapInstance = {
@@ -11,6 +13,7 @@ type MockMapInstance = {
   layers: Map<string, { id: string }>;
   source: MockSource | null;
   districtSource: MockSource | null;
+  analyticalSources: Map<string, unknown>;
   addedSourceData: unknown[];
   addedDistrictSourceData: unknown[];
   renderedFeatures: Array<{
@@ -19,6 +22,7 @@ type MockMapInstance = {
     layer?: { id: string };
   }>;
   zoom: number;
+  styleLoaded: boolean;
   bounds: { west: number; south: number; east: number; north: number };
   emit: (event: string, value?: unknown) => void;
   getStyle: () => { version: 8; sources: Record<string, never>; layers: [] };
@@ -38,6 +42,7 @@ vi.mock("maplibre-gl", () => {
     layers = new Map<string, { id: string }>();
     source: MockSource | null = null;
     districtSource: MockSource | null = null;
+    analyticalSources = new Map<string, unknown>();
     addedSourceData: unknown[] = [];
     addedDistrictSourceData: unknown[] = [];
     renderedFeatures: Array<{
@@ -47,6 +52,7 @@ vi.mock("maplibre-gl", () => {
     }> = [];
     canvas = document.createElement("canvas");
     zoom = 12;
+    styleLoaded = true;
     bounds = { west: 30.3, south: 59.93, east: 30.32, north: 59.945 };
     setLayoutProperty = vi.fn();
     fitBounds = vi.fn();
@@ -68,15 +74,19 @@ vi.mock("maplibre-gl", () => {
       for (const handler of this.handlers[event] ?? []) handler(value);
     }
     getSource(id: string) {
-      return id === "selected-districts" ? this.districtSource : this.source;
+      if (id === "selected-districts") return this.districtSource;
+      if (id === "catalog-features") return this.source;
+      return this.analyticalSources.get(id);
     }
-    addSource(id: string, source: { data: unknown }) {
+    addSource(id: string, source: { data?: unknown }) {
       if (id === "selected-districts") {
         this.addedDistrictSourceData.push(source.data);
         this.districtSource = { setData: vi.fn() };
-      } else {
+      } else if (id === "catalog-features") {
         this.addedSourceData.push(source.data);
         this.source = { setData: vi.fn() };
+      } else {
+        this.analyticalSources.set(id, source);
       }
     }
     getLayer(id: string) {
@@ -93,7 +103,8 @@ vi.mock("maplibre-gl", () => {
     }
     removeSource(id: string) {
       if (id === "selected-districts") this.districtSource = null;
-      else this.source = null;
+      else if (id === "catalog-features") this.source = null;
+      else this.analyticalSources.delete(id);
     }
     getBounds() {
       return {
@@ -113,7 +124,7 @@ vi.mock("maplibre-gl", () => {
       return this.canvas;
     }
     isStyleLoaded() {
-      return true;
+      return this.styleLoaded;
     }
     setStyle() {}
     remove() {}
@@ -912,6 +923,66 @@ describe("MapView MapLibre integration", () => {
     );
 
     expect(map.flyTo).toHaveBeenCalledWith({ center: [30.3, 59.9], zoom: 16, duration: 700 });
+  });
+
+  it("retries analytical overlay installation after a transient style lifecycle gap", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ type: "FeatureCollection", features: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const prepared: PreparedInfluence = {
+      grid_version: "spb-square-200m-v1",
+      influence_signature: "a".repeat(64),
+      spec: "immutable",
+      cell_count: 36292,
+      channels: [{
+        metric_key: "education.school.accessibility_index",
+        score_run_id: "00000000-0000-0000-0000-000000000001",
+        property_name: "score_0",
+      }],
+      tile_url_template: "/api/analysis/influence/tiles/a/{z}/{x}/{y}.mvt?spec=immutable",
+      delivery_version: "influence-mvt-v1",
+    };
+    const baseProps = {
+      visibleLayerIds: defaultVisibleLayerIds(),
+      districtIds: [] as string[],
+      navigationRequest: null,
+      selectedFeatureId: null,
+      onSelection: vi.fn(),
+      onVisibleFeatureIdsChange: vi.fn(),
+      onRequestStateChange: vi.fn(),
+      onZoomChange: vi.fn(),
+    };
+    const { rerender } = render(<MapView {...baseProps} activeInfluence={null} />);
+    const map = mapMock.instances[0];
+    act(() => map.emit("style.load"));
+    await act(async () => vi.runAllTimersAsync());
+
+    map.styleLoaded = false;
+    rerender(
+      <MapView
+        {...baseProps}
+        activeInfluence={{
+          prepared,
+          layers: { school: { enabled: true, minimumScore: 40 } },
+          accentedFactorId: null,
+        }}
+      />,
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    expect(map.layers.has(influenceLayerId("school"))).toBe(false);
+
+    map.styleLoaded = true;
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(map.analyticalSources.has(INFLUENCE_SOURCE_ID)).toBe(true);
+    expect(map.layers.has(influenceLayerId("school"))).toBe(true);
+
+    rerender(<MapView {...baseProps} activeInfluence={null} />);
+    await act(async () => vi.runAllTimersAsync());
+    expect(map.analyticalSources.has(INFLUENCE_SOURCE_ID)).toBe(false);
+    expect(map.layers.has(influenceLayerId("school"))).toBe(false);
   });
 
   it("routes a heatmap cell click to the inspector before catalog selection", async () => {

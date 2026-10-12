@@ -34,7 +34,6 @@ describe("analysis preferences", () => {
     expect(loaded.influenceLayers.school).toEqual({
       enabled: true,
       minimumScore: 72,
-      showObjects: true,
     });
     expect(loaded.scenarioWeights).toEqual({
       "education.school.accessibility_index_v2": 65,
