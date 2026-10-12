@@ -24,7 +24,11 @@ import {
   setCatalogSourceData,
   updateCatalogSelection,
 } from "./catalogLayerDriver";
-import { installRegisteredLayers, setRegisteredLayerVisibility } from "./layerRuntime";
+import {
+  installRegisteredLayers,
+  setRegisteredLayerVisibility,
+  setRegisteredLayerZoomRanges,
+} from "./layerRuntime";
 import { alignOpenFreeMapRoadArrows } from "./basemapStyle";
 import {
   installSelectedDistrictOverlay,
@@ -51,9 +55,13 @@ import {
   type InfluenceRenderState,
   updateInfluenceOverlay,
 } from "./influenceOverlay";
+import {
+  registryForPerformanceProfile,
+  type MapPerformanceProfile,
+} from "./performanceProfile";
 
 const INITIAL_CENTER: [number, number] = [30.3158, 59.9398];
-const INITIAL_ZOOM = 12;
+const INITIAL_ZOOM = 9.2;
 const VIEWPORT_DEBOUNCE_MS = 200;
 const DEFAULT_STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
 const BASEMAP_ATTRIBUTION =
@@ -88,6 +96,7 @@ export type MapViewProps = {
   selectedFeatureId: string | null;
   activeHeatmap?: PreparedHeatmap | null;
   activeInfluence?: InfluenceRenderState | null;
+  performanceProfile?: MapPerformanceProfile;
   heatmapDisplayRange?: HeatmapDisplayRange;
   heatmapInspectionEnabled?: boolean;
   onSelection: (selection: MapSelection) => void;
@@ -108,6 +117,7 @@ export function MapView({
   selectedFeatureId,
   activeHeatmap = null,
   activeInfluence = null,
+  performanceProfile = "balanced",
   heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
   heatmapInspectionEnabled = false,
   onSelection,
@@ -126,6 +136,7 @@ export function MapView({
   const selectedFeatureIdRef = useRef(selectedFeatureId);
   const activeHeatmapRef = useRef(activeHeatmap);
   const activeInfluenceRef = useRef(activeInfluence);
+  const performanceProfileRef = useRef(performanceProfile);
   const heatmapDisplayRangeRef = useRef(heatmapDisplayRange);
   const onSelectionRef = useRef<(selection: MapSelection) => void>(() => undefined);
   const onVisibleFeatureIdsChangeRef = useRef(onVisibleFeatureIdsChange);
@@ -155,6 +166,7 @@ export function MapView({
   selectedFeatureIdRef.current = selectedFeatureId;
   activeHeatmapRef.current = activeHeatmap;
   activeInfluenceRef.current = activeInfluence;
+  performanceProfileRef.current = performanceProfile;
   heatmapDisplayRangeRef.current = heatmapDisplayRange;
   onSelectionRef.current = onSelection;
   onVisibleFeatureIdsChangeRef.current = onVisibleFeatureIdsChange;
@@ -219,7 +231,11 @@ export function MapView({
       debounceTimerRef.current = window.setTimeout(() => {
         if (!map.getSource(CATALOG_SOURCE_ID)) return;
         const zoom = map.getZoom();
-        const catalogPlan = planCatalogViewport(layerRegistry, visibleLayerIdsRef.current, zoom);
+        const catalogPlan = planCatalogViewport(
+          registryForPerformanceProfile(layerRegistry, performanceProfileRef.current),
+          visibleLayerIdsRef.current,
+          zoom,
+        );
         if (catalogPlan.enabledLayerIds.length === 0) {
           clearCatalog({ status: "no-enabled-layers" });
           return;
@@ -333,7 +349,7 @@ export function MapView({
       if (primaryStyleUrl === DEFAULT_STYLE_URL) alignOpenFreeMapRoadArrows(map);
       installRegisteredLayers(
         map,
-        layerRegistry,
+        registryForPerformanceProfile(layerRegistry, performanceProfileRef.current),
         visibleLayerIdsRef.current,
         {
           catalogData: latestDataRef.current,
@@ -394,6 +410,7 @@ export function MapView({
       const layers = interactiveRenderLayerIds.filter((id) => map.getLayer(id));
       const heatmapInteractive =
         heatmapInspectionEnabledRef.current &&
+        map.getZoom() >= 11 &&
         Boolean(map.getLayer(HEATMAP_LAYER_ID)) &&
         map.queryRenderedFeatures(event.point, { layers: [HEATMAP_LAYER_ID] }).length > 0;
       const activeInfluenceLayers = influenceLayerIds.filter((id) => map.getLayer(id));
@@ -414,7 +431,11 @@ export function MapView({
           return;
         }
       }
-      if (heatmapInspectionEnabledRef.current && map.getLayer(HEATMAP_LAYER_ID)) {
+      if (
+        heatmapInspectionEnabledRef.current &&
+        map.getZoom() >= 11 &&
+        map.getLayer(HEATMAP_LAYER_ID)
+      ) {
         const heatmapFeature = map.queryRenderedFeatures(event.point, {
           layers: [HEATMAP_LAYER_ID],
         })[0];
@@ -533,6 +554,15 @@ export function MapView({
       );
     }
   }, [activeInfluence]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (typeof map.setLayerZoomRange !== "function") return;
+    const registry = registryForPerformanceProfile(layerRegistry, performanceProfile);
+    setRegisteredLayerZoomRanges(map, registry);
+    loadViewportRef.current(0);
+  }, [performanceProfile]);
 
   return <div ref={containerRef} className="catalog-map" aria-label="Карта Санкт-Петербурга" />;
 }

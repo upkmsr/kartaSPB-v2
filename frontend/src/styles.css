@@ -1262,6 +1262,43 @@ label:focus-visible {
   background: rgba(10, 15, 16, 0.45);
 }
 
+.map-performance-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 9px;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 7%);
+}
+
+.map-performance-presets legend {
+  grid-column: 1 / -1;
+  margin-bottom: 3px;
+  color: #87928f;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.map-performance-presets button {
+  min-width: 0;
+  padding-inline: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-performance-presets button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.map-performance-presets small {
+  grid-column: 1 / -1;
+}
+
 .layer-loading-settings__auto {
   display: grid;
   grid-template-columns: 16px 1fr;

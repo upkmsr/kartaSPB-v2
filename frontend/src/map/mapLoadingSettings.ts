@@ -1,12 +1,16 @@
 import { defaultVisibleLayerIds, layerRegistry } from "./layerRegistry";
+import type { HeatmapResolutionMode } from "./heatmapResolution";
+import type { MapPerformanceProfile } from "./performanceProfile";
 
-export const MAP_LOADING_SETTINGS_VERSION = 2 as const;
+export const MAP_LOADING_SETTINGS_VERSION = 3 as const;
 export const MAP_LOADING_SETTINGS_STORAGE_KEY = "kartaspb.map-loading-settings";
 
 export type MapLoadingSettings = {
   version: typeof MAP_LOADING_SETTINGS_VERSION;
   autoLoad: boolean;
   visibleLayerIds: Set<string>;
+  performanceProfile: MapPerformanceProfile;
+  analysisDetail: HeatmapResolutionMode;
 };
 
 type StoredMapLoadingSettings = {
@@ -14,10 +18,12 @@ type StoredMapLoadingSettings = {
   autoLoad: boolean;
   visibleLayerIds: string[];
   knownLayerIds: string[];
+  performanceProfile: MapPerformanceProfile;
+  analysisDetail: HeatmapResolutionMode;
 };
 
 type LegacyMapLoadingSettings = {
-  version: 1;
+  version: 1 | 2;
   autoLoad: boolean;
   visibleLayerIds: string[];
   knownLayerIds: string[];
@@ -29,6 +35,8 @@ export const defaultMapLoadingSettings = (): MapLoadingSettings => ({
   version: MAP_LOADING_SETTINGS_VERSION,
   autoLoad: true,
   visibleLayerIds: defaultVisibleLayerIds(),
+  performanceProfile: "balanced",
+  analysisDetail: "auto",
 });
 
 const isStringArray = (value: unknown): value is string[] =>
@@ -56,7 +64,7 @@ export const loadMapLoadingSettings = (
       typeof parsed !== "object" ||
       parsed === null ||
       !("version" in parsed) ||
-      (parsed.version !== MAP_LOADING_SETTINGS_VERSION && parsed.version !== 1) ||
+      ![1, 2, MAP_LOADING_SETTINGS_VERSION].includes(Number(parsed.version)) ||
       !("autoLoad" in parsed) ||
       typeof parsed.autoLoad !== "boolean" ||
       !("visibleLayerIds" in parsed) ||
@@ -78,7 +86,21 @@ export const loadMapLoadingSettings = (
         visibleLayerIds.add(layer.id);
       }
     }
-    return { version: MAP_LOADING_SETTINGS_VERSION, autoLoad: stored.autoLoad, visibleLayerIds };
+    const performanceProfile = stored.version === MAP_LOADING_SETTINGS_VERSION
+      ? stored.performanceProfile
+      : defaults.performanceProfile;
+    const analysisDetail = stored.version === MAP_LOADING_SETTINGS_VERSION
+      ? stored.analysisDetail
+      : defaults.analysisDetail;
+    if (!["economy", "balanced", "detailed"].includes(performanceProfile)) return defaults;
+    if (!["auto", "200m", "50m"].includes(analysisDetail)) return defaults;
+    return {
+      version: MAP_LOADING_SETTINGS_VERSION,
+      autoLoad: stored.autoLoad,
+      visibleLayerIds,
+      performanceProfile,
+      analysisDetail,
+    };
   } catch {
     return defaults;
   }
@@ -96,6 +118,8 @@ export const saveMapLoadingSettings = (
       .filter((layer) => settings.visibleLayerIds.has(layer.id))
       .map((layer) => layer.id),
     knownLayerIds: layerRegistry.map((layer) => layer.id),
+    performanceProfile: settings.performanceProfile,
+    analysisDetail: settings.analysisDetail,
   };
   try {
     storage.setItem(MAP_LOADING_SETTINGS_STORAGE_KEY, JSON.stringify(payload));

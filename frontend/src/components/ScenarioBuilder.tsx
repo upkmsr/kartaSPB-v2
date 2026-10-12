@@ -34,6 +34,8 @@ export type ScenarioBuilderProps = {
   minimumScore?: number;
   onWeightsChange?: (weights: Record<string, number>) => void;
   onMinimumScoreChange?: (minimumScore: number) => void;
+  resolutionMode?: HeatmapResolutionMode;
+  onResolutionModeChange?: (mode: HeatmapResolutionMode) => void;
   onPrepared: (heatmap: PreparedHeatmap) => void;
   onDisplayRangeChange: (range: HeatmapDisplayRange) => void;
   onHide: () => void;
@@ -54,6 +56,8 @@ export function ScenarioBuilder({
   minimumScore: controlledMinimumScore,
   onWeightsChange = () => undefined,
   onMinimumScoreChange = () => undefined,
+  resolutionMode: controlledResolutionMode,
+  onResolutionModeChange = () => undefined,
   onPrepared,
   onDisplayRangeChange,
   onHide,
@@ -62,7 +66,7 @@ export function ScenarioBuilder({
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [localWeights, setLocalWeights] = useState<Record<string, number>>({});
   const [localMinimumScore, setLocalMinimumScore] = useState(40);
-  const [resolutionMode, setResolutionMode] = useState<HeatmapResolutionMode>("auto");
+  const [localResolutionMode, setLocalResolutionMode] = useState<HeatmapResolutionMode>("auto");
   const [activated, setActivated] = useState(active);
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +78,7 @@ export function ScenarioBuilder({
   weightsChangeRef.current = onWeightsChange;
   const weights = controlledWeights ?? localWeights;
   const minimumScore = controlledMinimumScore ?? localMinimumScore;
+  const resolutionMode = controlledResolutionMode ?? localResolutionMode;
 
   const commitWeights = (next: Record<string, number>): void => {
     if (controlledWeights === undefined) setLocalWeights(next);
@@ -212,6 +217,11 @@ export function ScenarioBuilder({
     onDisplayRangeChange({ min: next, max: 100 });
   };
 
+  const updateResolutionMode = (mode: HeatmapResolutionMode): void => {
+    if (controlledResolutionMode === undefined) setLocalResolutionMode(mode);
+    onResolutionModeChange(mode);
+  };
+
   const groups = dimensions.reduce<Array<{ key: string; label: string; items: ScenarioDimension[] }>>(
     (result, dimension) => {
       const existing = result.find((item) => item.key === dimension.group);
@@ -275,7 +285,7 @@ export function ScenarioBuilder({
                   disabled={mode === "50m" && zoom < AUTO_DETAIL_MIN_ZOOM}
                   key={mode}
                   type="button"
-                  onClick={() => setResolutionMode(mode)}
+                  onClick={() => updateResolutionMode(mode)}
                 >{label}</button>
               ))}
             </div>

@@ -139,6 +139,9 @@ class InfluenceService:
             "y": y,
             "grid_version": plan.grid_version,
         }
+        overview = z <= 10
+        if overview:
+            params["aggregation_factor"] = {8: 8, 9: 4, 10: 2}.get(z, 8)
         score_columns: list[str] = []
         output_columns: list[str] = []
         run_parameters: list[str] = []
@@ -151,29 +154,57 @@ class InfluenceService:
                 f"CAST(:{parameter} AS uuid))::double precision AS score_{index}"
             )
             output_columns.append(f"score_{index}")
-        statement = text(
+        base_sql = (
             "WITH tile AS ("
             "SELECT ST_TileEnvelope(:z, :x, :y) AS bounds"
             "), tile_cells AS MATERIALIZED ("
-            "SELECT cell.cell_id, cell.district_id, cell.geom, tile.bounds "
+            "SELECT cell.cell_id, cell.district_id, cell.grid_i, cell.grid_j, "
+            "cell.geom, tile.bounds "
             "FROM analytics.analysis_cells AS cell CROSS JOIN tile "
             "WHERE cell.grid_version = :grid_version "
             "AND cell.geom && ST_Transform(tile.bounds, 4326) "
             "AND ST_Intersects(ST_Transform(cell.geom, 3857), tile.bounds)"
             "), scored AS ("
-            "SELECT cell.cell_id, cell.district_id, cell.geom, cell.bounds, "
+            "SELECT cell.cell_id, cell.district_id, cell.grid_i, cell.grid_j, "
+            "cell.geom, cell.bounds, "
             + ",".join(score_columns)
             + " FROM tile_cells AS cell "
             "JOIN analytics.cell_metric_scores AS score ON score.cell_id = cell.cell_id "
             "WHERE score.score_run_id IN ("
             + ",".join(run_parameters)
-            + ") GROUP BY cell.cell_id, cell.district_id, cell.geom, cell.bounds"
-            "), tile_rows AS MATERIALIZED ("
+            + ") GROUP BY cell.cell_id, cell.district_id, cell.grid_i, cell.grid_j, "
+            "cell.geom, cell.bounds"
+            ")"
+        )
+        if overview:
+            score_averages = ",".join(
+                f"avg(score_{index}) AS score_{index}"
+                for index in range(len(plan.metrics))
+            )
+            base_sql += (
+                ", aggregated AS MATERIALIZED (SELECT "
+                ":grid_version || ':overview:' || "
+                "floor(grid_i / CAST(:aggregation_factor AS double precision))::integer || ':' || "
+                "floor(grid_j / CAST(:aggregation_factor AS double precision))::integer || ':' || "
+                "district_id::text AS cell_id, district_id, "
+                + score_averages
+                + ", ST_Collect(geom) AS geom, "
+                "ST_TileEnvelope(:z, :x, :y)::box2d AS bounds "
+                "FROM scored GROUP BY district_id, "
+                "floor(grid_i / CAST(:aggregation_factor AS double precision)), "
+                "floor(grid_j / CAST(:aggregation_factor AS double precision)))"
+            )
+        source_cte = "aggregated" if overview else "scored"
+        statement = text(
+            base_sql
+            + ", tile_rows AS MATERIALIZED ("
             "SELECT cell_id, district_id::text AS district_id, "
             + ",".join(output_columns)
             + ", ST_AsMVTGeom(ST_Transform(geom, 3857), bounds, 4096, 64, true) "
-            "AS mvt_geom FROM scored ORDER BY cell_id"
-            ") SELECT ST_AsMVT(tile_rows, 'analysis_influence', 4096, 'mvt_geom') "
+            "AS mvt_geom FROM "
+            + source_cte
+            + " ORDER BY cell_id"
+            + ") SELECT ST_AsMVT(tile_rows, 'analysis_influence', 4096, 'mvt_geom') "
             "FROM tile_rows"
         )
         return statement, params

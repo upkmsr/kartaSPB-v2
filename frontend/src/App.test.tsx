@@ -84,6 +84,7 @@ describe("App", () => {
     await waitFor(() => expect(screen.getAllByText("READY")).toHaveLength(2));
     fireEvent.click(screen.getByRole("tab", { name: "Территории" }));
     await screen.findByRole("checkbox", { name: "Центральный" });
+    expect(screen.getByTestId("map-navigation")).toHaveTextContent("30,59,30.27,59.1");
     const scrollArea = screen.getByRole("region", {
       name: "Прокручиваемые настройки карты",
     });

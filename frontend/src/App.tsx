@@ -34,7 +34,7 @@ import {
 } from "./analysis/analysisPreferences";
 
 type ConnectionState = "checking" | "ready" | "offline";
-const INITIAL_ZOOM = 12;
+const INITIAL_ZOOM = 9.2;
 
 type ObjectSelection = { id: string; origin: "map" | "search" };
 type HeatmapOwner = "scenario" | null;
@@ -89,7 +89,17 @@ export function App() {
     setDistrictState({ status: "loading" });
     fetchDistricts(controller.signal)
       .then((districts) => {
-        if (!controller.signal.aborted) setDistrictState({ status: "loaded", districts });
+        if (!controller.signal.aborted) {
+          setDistrictState({ status: "loaded", districts });
+          const cityBbox = combinedDistrictBbox(districts);
+          if (cityBbox && navigationSequenceRef.current === 0) {
+            setNavigationRequest({
+              sequence: ++navigationSequenceRef.current,
+              kind: "bbox",
+              bbox: cityBbox,
+            });
+          }
+        }
       })
       .catch(() => {
         if (!controller.signal.aborted) setDistrictState({ status: "error" });
@@ -204,6 +214,8 @@ export function App() {
           influenceLayers={analysisPreferences.influenceLayers}
           preparedInfluence={preparedInfluence}
           accentedFactorId={accentedFactorId}
+          performanceProfile={loadingSettings.performanceProfile}
+          analysisDetail={loadingSettings.analysisDetail}
           zoom={zoom}
           onExpandedChange={setSidebarExpanded}
           onDistrictToggle={toggleDistrict}
@@ -253,6 +265,22 @@ export function App() {
           }}
           onInfluenceAccentChange={setAccentedFactorId}
           onObjectLayerVisibilityChange={setLayerVisible}
+          onPerformanceProfileChange={(performanceProfile) =>
+            setLoadingSettings((current) => ({
+              ...current,
+              performanceProfile,
+              autoLoad: performanceProfile !== "economy",
+              analysisDetail:
+                performanceProfile === "economy"
+                  ? "200m"
+                  : performanceProfile === "detailed"
+                    ? "50m"
+                    : "auto",
+            }))
+          }
+          onAnalysisDetailChange={(analysisDetail) =>
+            setLoadingSettings((current) => ({ ...current, analysisDetail }))
+          }
         />
 
         <MapWorkspace
@@ -267,6 +295,7 @@ export function App() {
           preparedInfluence={preparedInfluence}
           influenceLayers={analysisPreferences.influenceLayers}
           accentedFactorId={accentedFactorId}
+          performanceProfile={loadingSettings.performanceProfile}
           heatmapDisplayRange={heatmapDisplayRange}
           heatmapInspectionEnabled={heatmapInspectionEnabled}
           onObjectSelect={(id) => {

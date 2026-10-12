@@ -52,14 +52,14 @@ it("installs an absolute non-interactive fill below analysis and catalog layers"
     "analysis-grid-fill",
   );
 
-  expect(HEATMAP_MIN_ZOOM).toBe(11);
+  expect(HEATMAP_MIN_ZOOM).toBe(8);
   expect(map.sources.get(HEATMAP_SOURCE_ID)).toEqual(
-    expect.objectContaining({ type: "vector", minzoom: 11 }),
+    expect.objectContaining({ type: "vector", minzoom: 8 }),
   );
   expect(map.layers.get(HEATMAP_LAYER_ID)).toEqual(
     expect.objectContaining({
       type: "fill",
-      minzoom: 11,
+      minzoom: 8,
       "source-layer": "analysis_heatmap",
       before: "analysis-grid-fill",
       paint: expect.objectContaining({

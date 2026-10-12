@@ -53,3 +53,10 @@ def test_tile_sql_reads_immutable_scores_once_and_keeps_channels_separate() -> N
     assert "sum(score" not in sql.lower()
     assert "INSERT" not in sql.upper() and "UPDATE" not in sql.upper()
     assert params["grid_version"] == "grid"
+
+    overview_statement, overview_params = service.tile_statement(plan, 8, 159, 74)
+    overview_sql = str(overview_statement)
+    assert "avg(score_0) AS score_0" in overview_sql
+    assert "avg(score_1) AS score_1" in overview_sql
+    assert "ST_Collect(geom) AS geom" in overview_sql
+    assert overview_params["aggregation_factor"] == 8

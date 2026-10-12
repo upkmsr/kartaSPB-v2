@@ -224,3 +224,16 @@ export const setRegisteredLayerVisibility = (
     }
   }
 };
+
+export const setRegisteredLayerZoomRanges = (
+  map: Pick<MapLibreMap, "getLayer" | "setLayerZoomRange">,
+  registry: readonly LayerDefinition[],
+): void => {
+  for (const layer of registry) {
+    for (const definition of layer.renderDefinitions) {
+      if (map.getLayer(definition.id)) {
+        map.setLayerZoomRange(definition.id, layer.minZoom, layer.maxZoom ?? 24);
+      }
+    }
+  }
+};

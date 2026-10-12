@@ -27,6 +27,7 @@ import {
   InfluenceInspectorCard,
   type InfluenceInspection,
 } from "./InfluenceInspectorCard";
+import type { MapPerformanceProfile } from "../map/performanceProfile";
 
 export type MapWorkspaceProps = {
   visibleLayerIds: ReadonlySet<string>;
@@ -40,6 +41,7 @@ export type MapWorkspaceProps = {
   preparedInfluence?: PreparedInfluence | null;
   influenceLayers?: Record<string, IndependentLayerState>;
   accentedFactorId?: string | null;
+  performanceProfile?: MapPerformanceProfile;
   heatmapDisplayRange?: HeatmapDisplayRange;
   heatmapInspectionEnabled?: boolean;
   onObjectSelect: (objectId: string) => void;
@@ -88,6 +90,7 @@ export function MapWorkspace({
   preparedInfluence = null,
   influenceLayers = {},
   accentedFactorId = null,
+  performanceProfile = "balanced",
   heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
   heatmapInspectionEnabled = false,
   onObjectSelect,
@@ -240,6 +243,7 @@ export function MapWorkspace({
           layers: influenceLayers,
           accentedFactorId,
         } : null}
+        performanceProfile={performanceProfile}
         heatmapDisplayRange={heatmapDisplayRange}
         heatmapInspectionEnabled={heatmapInspectionEnabled}
         onSelection={handleMapSelection}

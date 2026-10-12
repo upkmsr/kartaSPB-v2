@@ -4,6 +4,7 @@ import { prepareInfluence, type PreparedInfluence } from "../api/influence";
 import type { IndependentLayerState } from "../analysis/analysisPreferences";
 import { factorRegistry } from "../analysis/factorRegistry";
 import { resolveHeatmapGridVersion } from "../map/heatmapResolution";
+import type { HeatmapResolutionMode } from "../map/heatmapResolution";
 
 type IndependentLayersProps = {
   active: boolean;
@@ -17,6 +18,7 @@ type IndependentLayersProps = {
   onHide: () => void;
   onAccentChange: (factorId: string | null) => void;
   onObjectLayerVisibilityChange: (layerId: string, visible: boolean) => void;
+  resolutionMode?: HeatmapResolutionMode;
 };
 
 const defaultLayerState = (): IndependentLayerState => ({
@@ -37,6 +39,7 @@ export function IndependentLayers({
   onHide,
   onAccentChange,
   onObjectLayerVisibilityChange,
+  resolutionMode = "auto",
 }: IndependentLayersProps) {
   const [registryReady, setRegistryReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +88,7 @@ export function IndependentLayers({
       .sort(),
     [layers],
   );
-  const gridVersion = resolveHeatmapGridVersion("auto", zoom);
+  const gridVersion = resolveHeatmapGridVersion(resolutionMode, zoom);
   const requestKey = JSON.stringify([gridVersion, enabledMetricKeys]);
   const preparedKey = prepared === null
     ? null

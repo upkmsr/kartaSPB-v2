@@ -221,6 +221,9 @@ class HeatmapService:
             "grid_version": plan.grid_version,
             "total_weight": plan.total_weight,
         }
+        overview = z <= 10
+        if overview:
+            params["aggregation_factor"] = {8: 8, 9: 4, 10: 2}.get(z, 8)
         selected_rows: list[str] = []
         for index, metric in enumerate(plan.metrics):
             selected_rows.append(
@@ -232,7 +235,8 @@ class HeatmapService:
             "WITH tile AS ("
             "SELECT ST_TileEnvelope(:z, :x, :y) AS bounds"
             "), tile_cells AS MATERIALIZED ("
-            "SELECT cell.cell_id, cell.district_id, cell.geom, tile.bounds "
+            "SELECT cell.cell_id, cell.district_id, cell.grid_i, cell.grid_j, "
+            "cell.geom, tile.bounds "
             "FROM analytics.analysis_cells AS cell CROSS JOIN tile "
             "WHERE cell.grid_version = :grid_version "
             "AND cell.geom && ST_Transform(tile.bounds, 4326) "
@@ -240,17 +244,37 @@ class HeatmapService:
             "), selected(score_run_id, weight) AS (VALUES "
             + ",".join(selected_rows)
             + "), scored AS ("
-            "SELECT cell.cell_id, cell.district_id, cell.geom, cell.bounds, "
+            "SELECT cell.cell_id, cell.district_id, cell.grid_i, cell.grid_j, "
+            "cell.geom, cell.bounds, "
             "(sum(score.score::numeric * selected.weight::numeric) / "
             "CAST(:total_weight AS numeric))::double precision AS score "
             "FROM tile_cells AS cell "
             "JOIN analytics.cell_metric_scores AS score ON score.cell_id = cell.cell_id "
             "JOIN selected ON selected.score_run_id = score.score_run_id "
-            "GROUP BY cell.cell_id, cell.district_id, cell.geom, cell.bounds"
-            "), tile_rows AS MATERIALIZED ("
+            "GROUP BY cell.cell_id, cell.district_id, cell.grid_i, cell.grid_j, "
+            "cell.geom, cell.bounds"
+            ")"
+            + (
+                ", aggregated AS MATERIALIZED ("
+                "SELECT :grid_version || ':overview:' || "
+                "floor(grid_i / CAST(:aggregation_factor AS double precision))::integer || ':' || "
+                "floor(grid_j / CAST(:aggregation_factor AS double precision))::integer || ':' || "
+                "district_id::text AS cell_id, district_id, avg(score) AS score, "
+                "ST_Collect(geom) AS geom, "
+                "ST_TileEnvelope(:z, :x, :y)::box2d AS bounds "
+                "FROM scored GROUP BY district_id, "
+                "floor(grid_i / CAST(:aggregation_factor AS double precision)), "
+                "floor(grid_j / CAST(:aggregation_factor AS double precision))"
+                ")"
+                if overview
+                else ""
+            )
+            + ", tile_rows AS MATERIALIZED ("
             "SELECT cell_id, district_id::text AS district_id, score, "
             "ST_AsMVTGeom(ST_Transform(geom, 3857), bounds, 4096, 64, true) AS geom "
-            "FROM scored ORDER BY cell_id"
+            "FROM "
+            + ("aggregated" if overview else "scored")
+            + " ORDER BY cell_id"
             ") SELECT ST_AsMVT(tile_rows, 'analysis_heatmap', 4096, 'geom') FROM tile_rows"
         )
         return statement, params

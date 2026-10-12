@@ -3,12 +3,15 @@ import { orderedGroups } from "../map/layerRegistryHelpers";
 import type { MapRequestState } from "../map/mapTypes";
 import type { CSSProperties } from "react";
 import type { LegendDefinition } from "../map/layerContract";
+import type { MapPerformanceProfile } from "../map/performanceProfile";
+import { minimumZoomForLayer } from "../map/performanceProfile";
 
 export type LayerControlProps = {
   visibleLayerIds: ReadonlySet<string>;
   zoom: number;
   requestState: MapRequestState;
   onToggle: (layerId: string) => void;
+  performanceProfile?: MapPerformanceProfile;
 };
 
 const layerStatus = (
@@ -48,6 +51,7 @@ export function LayerControl({
   zoom,
   requestState,
   onToggle,
+  performanceProfile = "balanced",
 }: LayerControlProps) {
   return (
     <section className="layer-control" aria-labelledby="layers-heading">
@@ -64,7 +68,8 @@ export function LayerControl({
               {group.label}
             </p>
             {layers.map((layer) => {
-              const belowMinZoom = zoom < layer.minZoom;
+              const minZoom = minimumZoomForLayer(layer, performanceProfile);
+              const belowMinZoom = zoom < minZoom;
               const enabled = visibleLayerIds.has(layer.id);
               const status = layerStatus(layer.id, enabled, belowMinZoom, requestState);
               return (
@@ -83,7 +88,7 @@ export function LayerControl({
                     aria-hidden="true"
                   />
                   <span>{layer.label}</span>
-                  <small>{belowMinZoom ? `с z${layer.minZoom}` : status}</small>
+                  <small>{belowMinZoom ? `с z${minZoom}` : status}</small>
                 </label>
               );
             })}

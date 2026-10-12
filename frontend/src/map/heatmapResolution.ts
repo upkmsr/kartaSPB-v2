@@ -8,7 +8,9 @@ export const resolveHeatmapGridVersion = (
   mode: HeatmapResolutionMode,
   zoom: number,
 ): string => {
-  if (mode === "50m") return DETAIL_GRID_VERSION;
+  if (mode === "50m") return zoom >= AUTO_DETAIL_MIN_ZOOM
+    ? DETAIL_GRID_VERSION
+    : OVERVIEW_GRID_VERSION;
   if (mode === "200m") return OVERVIEW_GRID_VERSION;
   return zoom >= AUTO_DETAIL_MIN_ZOOM ? DETAIL_GRID_VERSION : OVERVIEW_GRID_VERSION;
 };

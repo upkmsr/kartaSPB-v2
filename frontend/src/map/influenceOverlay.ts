@@ -5,7 +5,7 @@ import { factorByMetric, factorRegistry } from "../analysis/factorRegistry";
 
 export const INFLUENCE_SOURCE_ID = "analysis-influence-source";
 export const INFLUENCE_SOURCE_LAYER = "analysis_influence";
-export const INFLUENCE_MIN_ZOOM = 11;
+export const INFLUENCE_MIN_ZOOM = 8;
 
 export type InfluenceRenderState = {
   prepared: PreparedInfluence;

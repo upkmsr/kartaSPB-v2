@@ -4,7 +4,7 @@ import { DETAIL_GRID_VERSION } from "./heatmapResolution";
 
 export const HEATMAP_SOURCE_ID = "analysis-heatmap-source";
 export const HEATMAP_LAYER_ID = "analysis-heatmap-fill";
-export const HEATMAP_MIN_ZOOM = 11;
+export const HEATMAP_MIN_ZOOM = 8;
 export const HEATMAP_FILL_OPACITY = 0.36;
 export const HEATMAP_COLORS = [
   "#d73027",

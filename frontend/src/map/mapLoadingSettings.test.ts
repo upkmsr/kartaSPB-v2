@@ -40,12 +40,39 @@ describe("map loading settings persistence", () => {
     expect(loaded.visibleLayerIds.has("removed-layer")).toBe(false);
     const newLayer = layerRegistry.at(-1)!;
     expect(loaded.visibleLayerIds.has(newLayer.id)).toBe(newLayer.defaultVisible);
+    expect(loaded.performanceProfile).toBe("balanced");
+    expect(loaded.analysisDetail).toBe("auto");
+  });
+
+  it("restores valid v3 performance preferences", () => {
+    const loaded = loadMapLoadingSettings(
+      storageWith(
+        JSON.stringify({
+          version: 3,
+          autoLoad: false,
+          visibleLayerIds: ["water"],
+          knownLayerIds: layerRegistry.map((layer) => layer.id),
+          performanceProfile: "economy",
+          analysisDetail: "200m",
+        }),
+      ),
+    );
+
+    expect(loaded.performanceProfile).toBe("economy");
+    expect(loaded.analysisDetail).toBe("200m");
+    expect(loaded.visibleLayerIds).toEqual(new Set(["water"]));
   });
 
   it("writes a versioned allow-listed payload and tolerates storage failures", () => {
     const storage = storageWith(null);
     saveMapLoadingSettings(
-      { version: 2, autoLoad: false, visibleLayerIds: new Set([...defaultVisibleLayerIds(), "x"]) },
+      {
+        version: 3,
+        autoLoad: false,
+        visibleLayerIds: new Set([...defaultVisibleLayerIds(), "x"]),
+        performanceProfile: "balanced",
+        analysisDetail: "auto",
+      },
       storage,
     );
     expect(storage.setItem).toHaveBeenCalledWith(
@@ -53,7 +80,12 @@ describe("map loading settings persistence", () => {
       expect.any(String),
     );
     const payload = JSON.parse(storage.setItem.mock.calls[0][1]);
-    expect(payload).toMatchObject({ version: 2, autoLoad: false });
+    expect(payload).toMatchObject({
+      version: 3,
+      autoLoad: false,
+      performanceProfile: "balanced",
+      analysisDetail: "auto",
+    });
     expect(payload.visibleLayerIds).not.toContain("x");
 
     expect(() =>

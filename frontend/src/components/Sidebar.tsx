@@ -12,6 +12,8 @@ import { IndependentLayers } from "./IndependentLayers";
 import type { AnalysisMode } from "../analysis/analysisPreferences";
 import type { IndependentLayerState } from "../analysis/analysisPreferences";
 import type { PreparedInfluence } from "../api/influence";
+import type { HeatmapResolutionMode } from "../map/heatmapResolution";
+import type { MapPerformanceProfile } from "../map/performanceProfile";
 import { useState } from "react";
 import {
   DEFAULT_HEATMAP_DISPLAY_RANGE,
@@ -43,6 +45,8 @@ export type SidebarProps = {
   influenceLayers: Record<string, IndependentLayerState>;
   preparedInfluence: PreparedInfluence | null;
   accentedFactorId: string | null;
+  performanceProfile: MapPerformanceProfile;
+  analysisDetail: HeatmapResolutionMode;
   zoom: number;
   onExpandedChange: (expanded: boolean) => void;
   onDistrictToggle: (districtId: string) => void;
@@ -67,6 +71,8 @@ export type SidebarProps = {
   onInfluenceHide: () => void;
   onInfluenceAccentChange: (factorId: string | null) => void;
   onObjectLayerVisibilityChange: (layerId: string, visible: boolean) => void;
+  onPerformanceProfileChange: (profile: MapPerformanceProfile) => void;
+  onAnalysisDetailChange: (detail: HeatmapResolutionMode) => void;
 };
 
 type SidebarTab = "influence" | "composite" | "objects" | "territories" | "settings";
@@ -102,6 +108,8 @@ export function Sidebar({
   influenceLayers,
   preparedInfluence,
   accentedFactorId,
+  performanceProfile,
+  analysisDetail,
   zoom,
   onExpandedChange,
   onDistrictToggle,
@@ -126,6 +134,8 @@ export function Sidebar({
   onInfluenceHide,
   onInfluenceAccentChange,
   onObjectLayerVisibilityChange,
+  onPerformanceProfileChange,
+  onAnalysisDetailChange,
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<SidebarTab>(
     activeAnalysisMode === "composite" ? "composite" : "influence",
@@ -200,6 +210,7 @@ export function Sidebar({
                 onHide={onInfluenceHide}
                 onAccentChange={onInfluenceAccentChange}
                 onObjectLayerVisibilityChange={onObjectLayerVisibilityChange}
+                resolutionMode={analysisDetail}
               />
             </section>
             <section
@@ -219,6 +230,8 @@ export function Sidebar({
                 minimumScore={scenarioMinScore}
                 onWeightsChange={onScenarioWeightsChange}
                 onMinimumScoreChange={onScenarioMinScoreChange}
+                resolutionMode={analysisDetail}
+                onResolutionModeChange={onAnalysisDetailChange}
                 onPrepared={onScenarioPrepared}
                 onDisplayRangeChange={onHeatmapDisplayRangeChange}
                 onHide={onHeatmapHide}
@@ -236,6 +249,7 @@ export function Sidebar({
                 zoom={zoom}
                 requestState={mapRequestState}
                 onToggle={onLayerToggle}
+                performanceProfile={performanceProfile}
               />
             </section>
             <section
@@ -266,6 +280,10 @@ export function Sidebar({
                 onAutoLoadChange={onAutoLoadChange}
                 onLoadObjects={onLoadObjects}
                 onReset={onResetLoadingSettings}
+                performanceProfile={performanceProfile}
+                analysisDetail={analysisDetail}
+                onPerformanceProfileChange={onPerformanceProfileChange}
+                onAnalysisDetailChange={onAnalysisDetailChange}
               />
               <section className="system-status" aria-label="Состояние системы">
                 <p className="section-label">System</p>
