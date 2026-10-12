@@ -132,14 +132,10 @@ export function MapWorkspace({
     [onMapRequestStateChange],
   );
 
-  const handleVisibleFeatureIds = useCallback((visibleIds: ReadonlySet<string>) => {
-    if (
-      objectSelection?.origin === "map" &&
-      !visibleIds.has(objectSelection.id)
-    ) {
-      onObjectClose();
-    }
-  }, [objectSelection, onObjectClose]);
+  const handleVisibleFeatureIds = useCallback(() => {
+    // Selection is application state, not viewport state. A catalog reload may
+    // temporarily omit a selected feature and must not close its ObjectCard.
+  }, []);
 
   const handleMapSelection = useCallback(
     (selection: MapSelection) => {

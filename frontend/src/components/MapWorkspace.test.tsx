@@ -189,7 +189,7 @@ it("keeps the newest object card when an older details response arrives late", a
   expect(screen.getByRole("heading", { name: "Днепропетровский сквер" })).toBeInTheDocument();
 });
 
-it("clears a selected object after it disappears from the current scope", async () => {
+it("preserves a selected object after it disappears from the current viewport", async () => {
   vi.spyOn(globalThis, "fetch").mockResolvedValue(
     new Response(
       JSON.stringify({
@@ -209,7 +209,7 @@ it("clears a selected object after it disappears from the current scope", async 
   fireEvent.click(screen.getByRole("button", { name: "Выбрать аптеку" }));
   await screen.findByRole("heading", { name: "Озерки" });
   fireEvent.click(screen.getByRole("button", { name: "Применить пустой scope" }));
-  expect(screen.queryByLabelText("Карточка объекта")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Карточка объекта")).toBeInTheDocument();
 });
 
 it("keeps a search-selected object when it is absent from viewport GeoJSON", async () => {

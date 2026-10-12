@@ -3,6 +3,7 @@ import type { PreparedHeatmap } from "../api/heatmap";
 import {
   DEFAULT_HEATMAP_DISPLAY_RANGE,
   HEATMAP_LAYER_ID,
+  HEATMAP_FILL_OPACITY,
   HEATMAP_MIN_ZOOM,
   HEATMAP_SOURCE_ID,
   heatmapLegendValues,
@@ -61,7 +62,14 @@ it("installs an absolute non-interactive fill below analysis and catalog layers"
       minzoom: 11,
       "source-layer": "analysis_heatmap",
       before: "analysis-grid-fill",
-      paint: expect.objectContaining({ "fill-opacity": 0.72 }),
+      paint: expect.objectContaining({
+        "fill-opacity": [
+          "case",
+          [">=", ["get", "score"], 40],
+          HEATMAP_FILL_OPACITY,
+          0,
+        ],
+      }),
     }),
   );
   expect(JSON.stringify(map.layers.get(HEATMAP_LAYER_ID))).toContain("#d73027");
@@ -85,6 +93,11 @@ it("changes contrast through paint only and replaces only a changed source", () 
     HEATMAP_LAYER_ID,
     "fill-color",
     expect.any(Array),
+  );
+  expect(map.setPaintProperty).toHaveBeenCalledWith(
+    HEATMAP_LAYER_ID,
+    "fill-opacity",
+    ["case", [">=", ["get", "score"], 25], HEATMAP_FILL_OPACITY, 0],
   );
   expect(map.addSource).toHaveBeenCalledOnce();
   expect(map.addLayer).toHaveBeenCalledOnce();

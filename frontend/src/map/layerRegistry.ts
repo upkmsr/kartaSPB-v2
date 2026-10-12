@@ -188,7 +188,7 @@ export const layerRegistry: readonly LayerDefinition[] = [
     id: "road",
     categoryKey: "transport.road",
     label: "Дороги",
-    defaultVisible: true,
+    defaultVisible: false,
     minZoom: 16,
     legend: { kind: "line", color: "#ffb347" },
     renderDefinitions: [
@@ -299,6 +299,8 @@ export const layerRegistry: readonly LayerDefinition[] = [
 assertValidLayerRegistry(layerRegistry, layerGroups);
 
 export const defaultVisibleLayerIds = (): Set<string> => defaultLayerIds(layerRegistry);
+
+export const userVisibleLayers = layerRegistry.filter((layer) => layer.id !== "analysis-grid");
 
 export const activeCategoryKeys = (visibleLayerIds: ReadonlySet<string>, zoom: number): string[] =>
   catalogCategoryKeys(s6ViewportLayers(layerRegistry), visibleLayerIds, zoom);

@@ -78,17 +78,17 @@ describe("App", () => {
     expect(screen.getByLabelText("Панель управления картой")).toBeInTheDocument();
     expect(screen.getByLabelText("Рабочая область карты")).toBeInTheDocument();
     expect(screen.getByLabelText("Карта Санкт-Петербурга")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /Дороги/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("tab", { name: "Объекты на карте" }));
+    expect(screen.getByRole("checkbox", { name: /Дороги/ })).not.toBeChecked();
 
     await waitFor(() => expect(screen.getAllByText("READY")).toHaveLength(2));
+    fireEvent.click(screen.getByRole("tab", { name: "Территории" }));
     await screen.findByRole("checkbox", { name: "Центральный" });
-    expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(30);
     const scrollArea = screen.getByRole("region", {
       name: "Прокручиваемые настройки карты",
     });
     expect(scrollArea).toHaveClass("sidebar__content");
     expect(within(scrollArea).getByRole("checkbox", { name: "Район 18" })).toBeInTheDocument();
-    expect(within(scrollArea).getByRole("checkbox", { name: /Дороги/ })).toBeInTheDocument();
     const districtList = screen.getByText("Центральный").closest(".district-control__list");
     expect(districtList).not.toBeNull();
     expect(within(districtList as HTMLElement).getAllByRole("checkbox")[0]).toHaveAccessibleName(
@@ -104,6 +104,7 @@ describe("App", () => {
   it("uses district UUIDs for one, many, unselect, and clear selection", async () => {
     mockHealthyApi();
     render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: "Территории" }));
     await screen.findByRole("checkbox", { name: "Центральный" });
 
     fireEvent.click(
@@ -135,23 +136,28 @@ describe("App", () => {
   it("resets only loading preferences and preserves district selection", async () => {
     mockHealthyApi();
     render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: "Территории" }));
     await screen.findByRole("checkbox", { name: "Центральный" });
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Центральный" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Объекты на карте" }));
     fireEvent.click(screen.getByRole("checkbox", { name: /Дороги/ }));
+    expect(screen.getByRole("checkbox", { name: /Дороги/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("tab", { name: "Настройки карты" }));
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Автоматически загружать объекты" }),
     );
-    expect(screen.getByRole("checkbox", { name: /Дороги/ })).not.toBeChecked();
     expect(
       screen.getByRole("checkbox", { name: "Автоматически загружать объекты" }),
     ).not.toBeChecked();
 
     fireEvent.click(screen.getByRole("button", { name: "Сбросить настройки" }));
-    expect(screen.getByRole("checkbox", { name: /Дороги/ })).toBeChecked();
     expect(
       screen.getByRole("checkbox", { name: "Автоматически загружать объекты" }),
     ).toBeChecked();
+    fireEvent.click(screen.getByRole("tab", { name: "Объекты на карте" }));
+    expect(screen.getByRole("checkbox", { name: /Дороги/ })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("tab", { name: "Территории" }));
     expect(screen.getByRole("checkbox", { name: "Центральный" })).toBeChecked();
   });
 
@@ -171,6 +177,7 @@ describe("App", () => {
 
     render(<App />);
     expect(screen.getByLabelText("Карта Санкт-Петербурга")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Территории" }));
     expect(await screen.findByText("Не удалось загрузить районы.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Повторить" }));
     expect(await screen.findByRole("checkbox", { name: "Центральный" })).toBeInTheDocument();

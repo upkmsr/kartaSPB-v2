@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchScenarioDimensions,
-  fetchScoreDistribution,
   prepareHeatmap,
   type PreparedHeatmap,
   type ScenarioDimension,
 } from "../api/heatmap";
 import {
-  DEFAULT_HEATMAP_DISPLAY_RANGE,
   HEATMAP_COLORS,
   heatmapLegendValues,
   type HeatmapDisplayRange,
@@ -24,33 +22,23 @@ type LoadState =
   | { status: "loaded"; dimensions: ScenarioDimension[] }
   | { status: "error" };
 
-type ContrastMode = "low" | "medium" | "high" | "ultra" | "manual" | "district";
-
 export type ScenarioBuilderProps = {
   active: boolean;
   activeHeatmap: PreparedHeatmap | null;
-  districtIds: readonly string[];
+  districtIds?: readonly string[];
   zoom: number;
   displayRange: HeatmapDisplayRange;
   tileError: string | null;
   inspectEnabled: boolean;
+  weights?: Record<string, number>;
+  minimumScore?: number;
+  onWeightsChange?: (weights: Record<string, number>) => void;
+  onMinimumScoreChange?: (minimumScore: number) => void;
   onPrepared: (heatmap: PreparedHeatmap) => void;
   onDisplayRangeChange: (range: HeatmapDisplayRange) => void;
   onHide: () => void;
   onInspectEnabledChange: (enabled: boolean) => void;
 };
-
-const presetRanges: Record<Exclude<ContrastMode, "district" | "manual">, HeatmapDisplayRange> = {
-  low: { min: 0, max: 100 },
-  medium: { min: 25, max: 100 },
-  high: DEFAULT_HEATMAP_DISPLAY_RANGE,
-  ultra: { min: 70, max: 100 },
-};
-
-const isPresetContrast = (
-  mode: ContrastMode,
-): mode is Exclude<ContrastMode, "district" | "manual"> =>
-  mode !== "district" && mode !== "manual";
 
 const requestKey = (gridVersion: string, weights: Record<string, number>): string =>
   JSON.stringify({ gridVersion, weights: Object.entries(weights).sort(([a], [b]) => a.localeCompare(b)) });
@@ -58,29 +46,39 @@ const requestKey = (gridVersion: string, weights: Record<string, number>): strin
 export function ScenarioBuilder({
   active,
   activeHeatmap,
-  districtIds,
   zoom,
   displayRange,
   tileError,
   inspectEnabled,
+  weights: controlledWeights,
+  minimumScore: controlledMinimumScore,
+  onWeightsChange = () => undefined,
+  onMinimumScoreChange = () => undefined,
   onPrepared,
   onDisplayRangeChange,
   onHide,
   onInspectEnabledChange,
 }: ScenarioBuilderProps) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
-  const [weights, setWeights] = useState<Record<string, number>>({});
+  const [localWeights, setLocalWeights] = useState<Record<string, number>>({});
+  const [localMinimumScore, setLocalMinimumScore] = useState(40);
   const [resolutionMode, setResolutionMode] = useState<HeatmapResolutionMode>("auto");
-  const [contrastMode, setContrastMode] = useState<ContrastMode>("high");
-  const [manualRange, setManualRange] = useState<HeatmapDisplayRange>(
-    DEFAULT_HEATMAP_DISPLAY_RANGE,
-  );
-  const [activated, setActivated] = useState(false);
+  const [activated, setActivated] = useState(active);
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const prepareController = useRef<AbortController | null>(null);
-  const distributionController = useRef<AbortController | null>(null);
   const lastPreparedKey = useRef<string | null>(null);
+  const initialWeightsRef = useRef(controlledWeights ?? {});
+  const weightsControlledRef = useRef(controlledWeights !== undefined);
+  const weightsChangeRef = useRef(onWeightsChange);
+  weightsChangeRef.current = onWeightsChange;
+  const weights = controlledWeights ?? localWeights;
+  const minimumScore = controlledMinimumScore ?? localMinimumScore;
+
+  const commitWeights = (next: Record<string, number>): void => {
+    if (controlledWeights === undefined) setLocalWeights(next);
+    onWeightsChange(next);
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -88,18 +86,24 @@ export function ScenarioBuilder({
       .then((dimensions) => {
         if (controller.signal.aborted) return;
         setLoadState({ status: "loaded", dimensions });
-        setWeights(Object.fromEntries(dimensions.map((item) => [item.metric_key, 0])));
+        const initialWeights = Object.fromEntries(
+          dimensions.map((item) => [
+            item.metric_key,
+            initialWeightsRef.current[item.metric_key] ?? 0,
+          ]),
+        );
+        if (!weightsControlledRef.current) setLocalWeights(initialWeights);
+        weightsChangeRef.current(initialWeights);
       })
       .catch(() => {
         if (!controller.signal.aborted) setLoadState({ status: "error" });
       });
     return () => controller.abort();
-  }, []);
+  }, []); // Initial registry merge only; user changes remain controlled by App.
 
   useEffect(
     () => () => {
       prepareController.current?.abort();
-      distributionController.current?.abort();
     },
     [],
   );
@@ -138,11 +142,7 @@ export function ScenarioBuilder({
         .then((prepared) => {
           if (controller.signal.aborted) return;
           lastPreparedKey.current = key;
-          if (isPresetContrast(contrastMode)) {
-            onDisplayRangeChange({ ...presetRanges[contrastMode] });
-          } else if (contrastMode === "manual") {
-            onDisplayRangeChange({ ...manualRange });
-          }
+          onDisplayRangeChange({ min: minimumScore, max: 100 });
           onPrepared(prepared);
         })
         .catch(() => {
@@ -152,10 +152,9 @@ export function ScenarioBuilder({
           if (!controller.signal.aborted) setPreparing(false);
         });
     }, [
-      contrastMode,
       hasWeights,
       manualDetailBlocked,
-      manualRange,
+      minimumScore,
       onDisplayRangeChange,
       onPrepared,
       resolvedGrid,
@@ -169,45 +168,8 @@ export function ScenarioBuilder({
   }, [active, activated, canonicalRequestKey, hasWeights, manualDetailBlocked, prepare]);
 
   useEffect(() => {
-    if (contrastMode !== "district") return;
-    if (districtIds.length === 0) {
-      setContrastMode("high");
-      onDisplayRangeChange({ ...DEFAULT_HEATMAP_DISPLAY_RANGE });
-      return;
-    }
-    if (!active || !activeHeatmap || !hasWeights) return;
-    distributionController.current?.abort();
-    const controller = new AbortController();
-    distributionController.current = controller;
-    void fetchScoreDistribution(
-      {
-        grid_version: activeHeatmap.grid_version,
-        weights: selectedWeights,
-        district_ids: [...districtIds].sort(),
-      },
-      controller.signal,
-    )
-      .then((distribution) => {
-        if (
-          controller.signal.aborted ||
-          distribution.scoring_signature !== activeHeatmap.scoring_signature
-        ) return;
-        if (distribution.p90 > distribution.p10) {
-          onDisplayRangeChange({ min: distribution.p10, max: distribution.p90 });
-        } else {
-          setError("В выбранном районе недостаточно различий для относительной шкалы");
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setError("Не удалось сравнить выбранные районы");
-      });
-    return () => controller.abort();
-  }, [active, activeHeatmap, contrastMode, districtIds, hasWeights, onDisplayRangeChange, selectedWeights]);
-
-  useEffect(() => {
     if (hasWeights) return;
     prepareController.current?.abort();
-    distributionController.current?.abort();
     lastPreparedKey.current = null;
     setActivated(false);
     setPreparing(false);
@@ -216,14 +178,13 @@ export function ScenarioBuilder({
   }, [active, activeHeatmap, hasWeights, onHide]);
 
   const updateWeight = (metricKey: string, value: number): void => {
-    setWeights((current) => ({ ...current, [metricKey]: value }));
+    commitWeights({ ...weights, [metricKey]: value });
   };
 
   const setAll = (value: number): void => {
-    setWeights(Object.fromEntries(dimensions.map((item) => [item.metric_key, value])));
+    commitWeights(Object.fromEntries(dimensions.map((item) => [item.metric_key, value])));
     if (value === 0) {
       prepareController.current?.abort();
-      distributionController.current?.abort();
       setActivated(false);
       setPreparing(false);
       lastPreparedKey.current = null;
@@ -241,26 +202,14 @@ export function ScenarioBuilder({
     setActivated(false);
     lastPreparedKey.current = null;
     prepareController.current?.abort();
-    distributionController.current?.abort();
     onHide();
   };
 
-  const selectContrast = (mode: ContrastMode): void => {
-    if (mode === "district" && districtIds.length === 0) return;
-    setContrastMode(mode);
-    setError(null);
-    if (isPresetContrast(mode)) onDisplayRangeChange({ ...presetRanges[mode] });
-    if (mode === "manual") onDisplayRangeChange({ ...manualRange });
-  };
-
-  const updateManualRange = (edge: "min" | "max", value: number): void => {
-    const next = edge === "min"
-      ? { min: Math.min(Math.max(value, 0), manualRange.max - 1), max: manualRange.max }
-      : { min: manualRange.min, max: Math.max(Math.min(value, 100), manualRange.min + 1) };
-    setManualRange(next);
-    setContrastMode("manual");
-    setError(null);
-    onDisplayRangeChange(next);
+  const updateMinimumScore = (value: number): void => {
+    const next = Math.min(99, Math.max(0, value));
+    if (controlledMinimumScore === undefined) setLocalMinimumScore(next);
+    onMinimumScoreChange(next);
+    onDisplayRangeChange({ min: next, max: 100 });
   };
 
   const groups = dimensions.reduce<Array<{ key: string; label: string; items: ScenarioDimension[] }>>(
@@ -304,52 +253,19 @@ export function ScenarioBuilder({
             <button type="button" onClick={() => setAll(50)}>Все поровну</button>
             <button type="button" onClick={() => setAll(0)}>Сбросить</button>
           </div>
-          <fieldset className="heatmap-control__choice-group">
-            <legend>Контраст карты</legend>
-            <div className="heatmap-control__segments">
-              {(["low", "medium", "high", "ultra", "manual", "district"] as const).map((mode) => (
-                <button
-                  aria-pressed={contrastMode === mode}
-                  disabled={mode === "district" && districtIds.length === 0}
-                  key={mode}
-                  type="button"
-                  onClick={() => selectContrast(mode)}
-                >
-                  {{ low: "Низкий", medium: "Средний", high: "Высокий", ultra: "Очень высокий", manual: "Вручную", district: "По району" }[mode]}
-                </button>
-              ))}
-            </div>
-            {contrastMode === "district" && <small>Сравнение внутри выбранного района</small>}
-            {contrastMode === "manual" && (
-              <div className="scenario-builder__manual-range">
-                <label>
-                  <span>Минимальный отображаемый балл</span>
-                  <input
-                    type="range"
-                    aria-label="Минимальный отображаемый балл"
-                    min="0"
-                    max="99"
-                    value={manualRange.min}
-                    onChange={(event) => updateManualRange("min", Number(event.target.value))}
-                  />
-                  <output>{manualRange.min}</output>
-                </label>
-                <label>
-                  <span>Максимальный отображаемый балл</span>
-                  <input
-                    type="range"
-                    aria-label="Максимальный отображаемый балл"
-                    min="1"
-                    max="100"
-                    value={manualRange.max}
-                    onChange={(event) => updateManualRange("max", Number(event.target.value))}
-                  />
-                  <output>{manualRange.max}</output>
-                </label>
-                <small>Значения ниже минимума и выше максимума визуально обрезаются; аналитический балл не меняется.</small>
-              </div>
-            )}
-          </fieldset>
+          <label className="scenario-builder__minimum">
+            <span>Минимальный отображаемый балл</span>
+            <input
+              type="range"
+              aria-label="Минимальный отображаемый балл"
+              min="0"
+              max="99"
+              value={minimumScore}
+              onChange={(event) => updateMinimumScore(Number(event.target.value))}
+            />
+            <output>{minimumScore}</output>
+            <small>Ниже порога ячейки прозрачны. Исходный балл и расчёт не изменяются.</small>
+          </label>
           <fieldset className="heatmap-control__choice-group">
             <legend>Детализация</legend>
             <div className="heatmap-control__segments">
@@ -394,7 +310,7 @@ export function ScenarioBuilder({
       {active && activeHeatmap && (
         <div className="heatmap-legend" aria-label="Легенда персонального сценария">
           <strong>Персональный сценарий</strong>
-          <span>{contrastMode === "district" ? "Сравнение внутри выбранного района" : `Цветовой диапазон: ${displayRange.min.toFixed(0)}–${displayRange.max.toFixed(0)}. Аналитический балл: 0–100.`}</span>
+          <span>{`Цветовой диапазон: ${displayRange.min.toFixed(0)}–100. Аналитический балл: 0–100.`}</span>
           <div className="heatmap-legend__scale" aria-hidden="true" />
           <div className="heatmap-legend__values">
             {heatmapLegendValues(displayRange).map((value, index) => <span key={`${value}-${index}`} style={{ color: HEATMAP_COLORS[index] }}>{value.toFixed(0)}</span>)}

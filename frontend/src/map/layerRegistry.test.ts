@@ -26,6 +26,7 @@ describe("layerRegistry", () => {
     ]);
     expect(layerRegistry.every((layer) => layer.renderDefinitions.length > 0)).toBe(true);
     expect(layerRegistry.find((layer) => layer.id === "boundary")?.defaultVisible).toBe(false);
+    expect(layerRegistry.find((layer) => layer.id === "road")?.defaultVisible).toBe(false);
     const grid = layerRegistry.find((layer) => layer.id === "analysis-grid");
     expect(grid).toMatchObject({
       groupId: "analytics",
@@ -63,7 +64,8 @@ describe("layerRegistry", () => {
     expect(activeCategoryKeys(visible, 13)).not.toContain("healthcare.pharmacy");
     expect(activeCategoryKeys(visible, 15)).toContain("transport.stop");
     expect(activeCategoryKeys(visible, 15)).not.toContain("transport.road");
-    expect(activeCategoryKeys(visible, 16)).toContain("transport.road");
+    expect(activeCategoryKeys(visible, 16)).not.toContain("transport.road");
+    expect(activeCategoryKeys(new Set([...visible, "road"]), 16)).toContain("transport.road");
   });
 
   it("uses enabled layers as search scope independently of map zoom", () => {

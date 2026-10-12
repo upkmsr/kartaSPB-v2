@@ -5,6 +5,7 @@ import { DETAIL_GRID_VERSION } from "./heatmapResolution";
 export const HEATMAP_SOURCE_ID = "analysis-heatmap-source";
 export const HEATMAP_LAYER_ID = "analysis-heatmap-fill";
 export const HEATMAP_MIN_ZOOM = 11;
+export const HEATMAP_FILL_OPACITY = 0.36;
 export const HEATMAP_COLORS = [
   "#d73027",
   "#fc8d59",
@@ -82,6 +83,15 @@ export const heatmapColorExpression = (
   ];
 };
 
+export const heatmapOpacityExpression = (
+  range: HeatmapDisplayRange,
+): ExpressionSpecification => [
+  "case",
+  [">=", ["get", "score"], range.min],
+  HEATMAP_FILL_OPACITY,
+  0,
+];
+
 const removeInstalledOverlay = (map: HeatmapOverlayMap): void => {
   if (map.getLayer(HEATMAP_LAYER_ID)) map.removeLayer(HEATMAP_LAYER_ID);
   if (map.getSource(HEATMAP_SOURCE_ID)) map.removeSource(HEATMAP_SOURCE_ID);
@@ -112,6 +122,11 @@ export const updateHeatmapOverlay = (
         "fill-color",
         heatmapColorExpression(displayRange),
       );
+      map.setPaintProperty(
+        HEATMAP_LAYER_ID,
+        "fill-opacity",
+        heatmapOpacityExpression(displayRange),
+      );
       installedDisplayRanges.set(map as object, rangeKey(displayRange));
     }
     return;
@@ -132,7 +147,7 @@ export const updateHeatmapOverlay = (
       minzoom: heatmap.grid_version === DETAIL_GRID_VERSION ? 13 : HEATMAP_MIN_ZOOM,
       paint: {
         "fill-color": heatmapColorExpression(displayRange),
-        "fill-opacity": 0.72,
+        "fill-opacity": heatmapOpacityExpression(displayRange),
       },
     },
     beforeId && map.getLayer(beforeId) ? beforeId : undefined,

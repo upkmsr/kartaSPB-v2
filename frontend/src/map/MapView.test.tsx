@@ -205,7 +205,7 @@ describe("MapView MapLibre integration", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(map.addedSourceData).toHaveLength(1);
     const zoomedUrl = new URL(String(fetchMock.mock.calls[1][0]), "http://localhost");
-    expect(zoomedUrl.searchParams.get("categories")).toContain("transport.road");
+    expect(zoomedUrl.searchParams.get("categories")).not.toContain("transport.road");
     expect(zoomedUrl.searchParams.get("categories")).toContain("transport.stop");
   });
 

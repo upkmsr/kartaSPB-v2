@@ -61,14 +61,15 @@ it("renders exactly eight explicit zero-weight sliders and quick actions", async
   const onHide = vi.fn();
   render(<ScenarioBuilder {...props} onHide={onHide} />);
   const sliders = await screen.findAllByRole("slider");
-  expect(sliders).toHaveLength(8);
-  expect(sliders.every((slider) => slider.getAttribute("value") === "0")).toBe(true);
+  expect(sliders).toHaveLength(9);
+  const factorSliders = sliders.filter((slider) => slider.getAttribute("aria-label") !== "Минимальный отображаемый балл");
+  expect(factorSliders.every((slider) => slider.getAttribute("value") === "0")).toBe(true);
   expect(screen.getByRole("button", { name: "Показать сценарий" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "По району" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "По району" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Все поровну" }));
-  expect(sliders.every((slider) => slider.getAttribute("value") === "50")).toBe(true);
+  expect(factorSliders.every((slider) => slider.getAttribute("value") === "50")).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Сбросить" }));
-  expect(sliders.every((slider) => slider.getAttribute("value") === "0")).toBe(true);
+  expect(factorSliders.every((slider) => slider.getAttribute("value") === "0")).toBe(true);
   expect(onHide).toHaveBeenCalledOnce();
 });
 
@@ -184,7 +185,7 @@ it("omits zero weights and aborts a stale live prepare", async () => {
   expect(onPrepared).toHaveBeenCalledOnce();
 });
 
-it("does not prepare again for contrast-only changes and can show an unchanged hidden scenario", async () => {
+it("changes the visual threshold without preparing again and can show an unchanged hidden scenario", async () => {
   const onPrepared = vi.fn();
   const onDisplayRangeChange = vi.fn();
   const onHide = vi.fn();
@@ -216,12 +217,6 @@ it("does not prepare again for contrast-only changes and can show an unchanged h
       onHide={onHide}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Средний" }));
-  expect(onDisplayRangeChange).toHaveBeenCalledWith({ min: 25, max: 100 });
-  expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/heatmap/prepare"))).toHaveLength(1);
-  fireEvent.click(screen.getByRole("button", { name: "Очень высокий" }));
-  expect(onDisplayRangeChange).toHaveBeenCalledWith({ min: 70, max: 100 });
-  fireEvent.click(screen.getByRole("button", { name: "Вручную" }));
   fireEvent.change(screen.getByRole("slider", { name: "Минимальный отображаемый балл" }), {
     target: { value: "82" },
   });
@@ -279,22 +274,10 @@ it("aborts an in-flight prepare and clears the scenario when all weights become 
   expect(onPrepared).not.toHaveBeenCalled();
 });
 
-it("blocks manual 50 m below z13 and derives district-only display quantiles", async () => {
+it("blocks manual 50 m below z13 and keeps district distribution out of the UI", async () => {
   const onDisplayRangeChange = vi.fn();
   vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
     if (String(input).includes("/scenarios/dimensions")) return Promise.resolve(jsonResponse(dimensions));
-    if (String(input).includes("/scoring/distribution")) {
-      return Promise.resolve(jsonResponse({
-        grid_version: "spb-square-200m-v1",
-        scoring_signature: "a".repeat(64),
-        cell_count: 1234,
-        p10: 31,
-        p25: 45,
-        p50: 58,
-        p75: 70,
-        p90: 84,
-      }));
-    }
     return Promise.resolve(jsonResponse(prepared()));
   });
   render(
@@ -309,9 +292,12 @@ it("blocks manual 50 m below z13 and derives district-only display quantiles", a
   await screen.findAllByRole("slider");
   expect(screen.getByRole("button", { name: "50 м" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Все поровну" }));
-  fireEvent.click(screen.getByRole("button", { name: "По району" }));
-  expect(await screen.findAllByText("Сравнение внутри выбранного района")).toHaveLength(2);
-  await waitFor(() => expect(onDisplayRangeChange).toHaveBeenCalledWith({ min: 31, max: 84 }));
+  expect(screen.queryByRole("button", { name: "По району" })).not.toBeInTheDocument();
+  expect(globalThis.fetch).not.toHaveBeenCalledWith(
+    expect.stringContaining("/scoring/distribution"),
+    expect.anything(),
+  );
+  expect(onDisplayRangeChange).not.toHaveBeenCalledWith({ min: 31, max: 84 });
 });
 
 it("exposes an explicit score inspector only for an active scenario", async () => {

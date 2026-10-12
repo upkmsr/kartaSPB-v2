@@ -1,13 +1,15 @@
 import type { District } from "../api/districts";
 import { DistrictSection, type DistrictLoadState } from "./DistrictSection";
 import { LayerControl } from "./LayerControl";
+import { MapSettingsPanel } from "./MapSettingsPanel";
 import { SearchSection } from "./SearchSection";
 import { StatusIndicator } from "./StatusIndicator";
 import type { SearchResult } from "../api/search";
 import type { MapRequestState } from "../map/mapTypes";
 import type { PreparedHeatmap } from "../api/heatmap";
-import { HeatmapControl } from "./HeatmapControl";
 import { ScenarioBuilder } from "./ScenarioBuilder";
+import type { AnalysisMode } from "../analysis/analysisPreferences";
+import { useState } from "react";
 import {
   DEFAULT_HEATMAP_DISPLAY_RANGE,
   type HeatmapDisplayRange,
@@ -32,6 +34,9 @@ export type SidebarProps = {
   heatmapDisplayRange?: HeatmapDisplayRange;
   heatmapTileError: string | null;
   heatmapInspectionEnabled: boolean;
+  activeAnalysisMode: AnalysisMode;
+  scenarioWeights: Record<string, number>;
+  scenarioMinScore: number;
   zoom: number;
   onExpandedChange: (expanded: boolean) => void;
   onDistrictToggle: (districtId: string) => void;
@@ -45,11 +50,23 @@ export type SidebarProps = {
   onResetLoadingSettings: () => void;
   onSearchResultActivate: (result: SearchResult) => void;
   onScenarioPrepared: (heatmap: PreparedHeatmap) => void;
-  onSingleHeatmapPrepared: (heatmap: PreparedHeatmap) => void;
   onHeatmapDisplayRangeChange?: (range: HeatmapDisplayRange) => void;
   onHeatmapHide: () => void;
   onHeatmapInspectionEnabledChange: (enabled: boolean) => void;
+  onActiveAnalysisModeChange: (mode: AnalysisMode) => void;
+  onScenarioWeightsChange: (weights: Record<string, number>) => void;
+  onScenarioMinScoreChange: (minimumScore: number) => void;
 };
+
+type SidebarTab = "influence" | "composite" | "objects" | "territories" | "settings";
+
+const tabs: readonly { id: SidebarTab; label: string; shortLabel: string }[] = [
+  { id: "influence", label: "Слои влияния", shortLabel: "Влияние" },
+  { id: "composite", label: "Общий анализ", shortLabel: "Анализ" },
+  { id: "objects", label: "Объекты на карте", shortLabel: "Объекты" },
+  { id: "territories", label: "Территории", shortLabel: "Районы" },
+  { id: "settings", label: "Настройки карты", shortLabel: "Настройки" },
+];
 
 export function Sidebar({
   expanded,
@@ -68,6 +85,9 @@ export function Sidebar({
   heatmapDisplayRange = DEFAULT_HEATMAP_DISPLAY_RANGE,
   heatmapTileError,
   heatmapInspectionEnabled,
+  activeAnalysisMode,
+  scenarioWeights,
+  scenarioMinScore,
   zoom,
   onExpandedChange,
   onDistrictToggle,
@@ -81,11 +101,21 @@ export function Sidebar({
   onResetLoadingSettings,
   onSearchResultActivate,
   onScenarioPrepared,
-  onSingleHeatmapPrepared,
   onHeatmapDisplayRangeChange = () => undefined,
   onHeatmapHide,
   onHeatmapInspectionEnabledChange,
+  onActiveAnalysisModeChange,
+  onScenarioWeightsChange,
+  onScenarioMinScoreChange,
 }: SidebarProps) {
+  const [activeTab, setActiveTab] = useState<SidebarTab>(
+    activeAnalysisMode === "composite" ? "composite" : "influence",
+  );
+  const selectTab = (tab: SidebarTab): void => {
+    setActiveTab(tab);
+    if (tab === "influence") onActiveAnalysisModeChange("independent");
+    if (tab === "composite") onActiveAnalysisModeChange("composite");
+  };
   return (
     <aside
       className={expanded ? "sidebar sidebar--expanded" : "sidebar sidebar--collapsed"}
@@ -115,60 +145,105 @@ export function Sidebar({
             selectedResultId={selectedSearchResultId}
             onResultActivate={onSearchResultActivate}
           />
+          <nav className="sidebar-tabs" role="tablist" aria-label="Разделы карты">
+            {tabs.map((tab) => (
+              <button
+                type="button"
+                role="tab"
+                aria-label={tab.label}
+                aria-selected={activeTab === tab.id}
+                aria-controls={`sidebar-panel-${tab.id}`}
+                id={`sidebar-tab-${tab.id}`}
+                key={tab.id}
+                onClick={() => selectTab(tab.id)}
+              >
+                <span>{tab.shortLabel}</span>
+              </button>
+            ))}
+          </nav>
 
-          <DistrictSection
-            state={districtState}
-            selectedDistrictIds={selectedDistrictIds}
-            onToggle={onDistrictToggle}
-            onClear={onDistrictClear}
-            onLocate={onDistrictLocate}
-            onLocateSelected={onDistrictLocateSelected}
-            onRetry={onDistrictRetry}
-          />
-
-          <ScenarioBuilder
-            active={heatmapOwner === "scenario"}
-            activeHeatmap={heatmapOwner === "scenario" ? activeHeatmap : null}
-            districtIds={districtIds}
-            zoom={zoom}
-            tileError={heatmapOwner === "scenario" ? heatmapTileError : null}
-            inspectEnabled={heatmapInspectionEnabled}
-            displayRange={heatmapDisplayRange}
-            onPrepared={onScenarioPrepared}
-            onDisplayRangeChange={onHeatmapDisplayRangeChange}
-            onHide={onHeatmapHide}
-            onInspectEnabledChange={onHeatmapInspectionEnabledChange}
-          />
-
-          <details className="single-metric-view">
-            <summary>Один показатель</summary>
-            <HeatmapControl
-              activeHeatmap={heatmapOwner === "single" ? activeHeatmap : null}
-              tileError={heatmapOwner === "single" ? heatmapTileError : null}
-              displayRange={heatmapDisplayRange}
-              zoom={zoom}
-              onPrepared={onSingleHeatmapPrepared}
-              onDisplayRangeChange={onHeatmapDisplayRangeChange}
-              onHide={onHeatmapHide}
-            />
-          </details>
-
-          <LayerControl
-            visibleLayerIds={visibleLayerIds}
-            zoom={zoom}
-            autoLoad={autoLoad}
-            requestState={mapRequestState}
-            onToggle={onLayerToggle}
-            onAutoLoadChange={onAutoLoadChange}
-            onLoadObjects={onLoadObjects}
-            onReset={onResetLoadingSettings}
-          />
-
-          <section className="system-status" aria-label="Состояние системы">
-            <p className="section-label">System</p>
-            <StatusIndicator label="Backend" status={backend} />
-            <StatusIndicator label="PostGIS" status={postgis} />
-          </section>
+          <div className="sidebar-panels">
+            <section
+              id="sidebar-panel-influence"
+              role="tabpanel"
+              aria-labelledby="sidebar-tab-influence"
+              hidden={activeTab !== "influence"}
+            >
+              <p className="section-label">Слои влияния</p>
+              <p className="sidebar-panel__hint">Независимые аналитические факторы появятся в Gate B.</p>
+            </section>
+            <section
+              id="sidebar-panel-composite"
+              role="tabpanel"
+              aria-labelledby="sidebar-tab-composite"
+              hidden={activeTab !== "composite"}
+            >
+              <ScenarioBuilder
+                active={heatmapOwner === "scenario"}
+                activeHeatmap={heatmapOwner === "scenario" ? activeHeatmap : null}
+                zoom={zoom}
+                tileError={heatmapOwner === "scenario" ? heatmapTileError : null}
+                inspectEnabled={heatmapInspectionEnabled}
+                displayRange={heatmapDisplayRange}
+                weights={scenarioWeights}
+                minimumScore={scenarioMinScore}
+                onWeightsChange={onScenarioWeightsChange}
+                onMinimumScoreChange={onScenarioMinScoreChange}
+                onPrepared={onScenarioPrepared}
+                onDisplayRangeChange={onHeatmapDisplayRangeChange}
+                onHide={onHeatmapHide}
+                onInspectEnabledChange={onHeatmapInspectionEnabledChange}
+              />
+            </section>
+            <section
+              id="sidebar-panel-objects"
+              role="tabpanel"
+              aria-labelledby="sidebar-tab-objects"
+              hidden={activeTab !== "objects"}
+            >
+              <LayerControl
+                visibleLayerIds={visibleLayerIds}
+                zoom={zoom}
+                requestState={mapRequestState}
+                onToggle={onLayerToggle}
+              />
+            </section>
+            <section
+              id="sidebar-panel-territories"
+              role="tabpanel"
+              aria-labelledby="sidebar-tab-territories"
+              hidden={activeTab !== "territories"}
+            >
+              <DistrictSection
+                state={districtState}
+                selectedDistrictIds={selectedDistrictIds}
+                onToggle={onDistrictToggle}
+                onClear={onDistrictClear}
+                onLocate={onDistrictLocate}
+                onLocateSelected={onDistrictLocateSelected}
+                onRetry={onDistrictRetry}
+              />
+            </section>
+            <section
+              id="sidebar-panel-settings"
+              role="tabpanel"
+              aria-labelledby="sidebar-tab-settings"
+              hidden={activeTab !== "settings"}
+            >
+              <MapSettingsPanel
+                autoLoad={autoLoad}
+                requestState={mapRequestState}
+                onAutoLoadChange={onAutoLoadChange}
+                onLoadObjects={onLoadObjects}
+                onReset={onResetLoadingSettings}
+              />
+              <section className="system-status" aria-label="Состояние системы">
+                <p className="section-label">System</p>
+                <StatusIndicator label="Backend" status={backend} />
+                <StatusIndicator label="PostGIS" status={postgis} />
+              </section>
+            </section>
+          </div>
       </div>
     </aside>
   );

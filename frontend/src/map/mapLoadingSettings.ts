@@ -1,6 +1,6 @@
 import { defaultVisibleLayerIds, layerRegistry } from "./layerRegistry";
 
-export const MAP_LOADING_SETTINGS_VERSION = 1 as const;
+export const MAP_LOADING_SETTINGS_VERSION = 2 as const;
 export const MAP_LOADING_SETTINGS_STORAGE_KEY = "kartaspb.map-loading-settings";
 
 export type MapLoadingSettings = {
@@ -11,6 +11,13 @@ export type MapLoadingSettings = {
 
 type StoredMapLoadingSettings = {
   version: typeof MAP_LOADING_SETTINGS_VERSION;
+  autoLoad: boolean;
+  visibleLayerIds: string[];
+  knownLayerIds: string[];
+};
+
+type LegacyMapLoadingSettings = {
+  version: 1;
   autoLoad: boolean;
   visibleLayerIds: string[];
   knownLayerIds: string[];
@@ -49,7 +56,7 @@ export const loadMapLoadingSettings = (
       typeof parsed !== "object" ||
       parsed === null ||
       !("version" in parsed) ||
-      parsed.version !== MAP_LOADING_SETTINGS_VERSION ||
+      (parsed.version !== MAP_LOADING_SETTINGS_VERSION && parsed.version !== 1) ||
       !("autoLoad" in parsed) ||
       typeof parsed.autoLoad !== "boolean" ||
       !("visibleLayerIds" in parsed) ||
@@ -60,11 +67,13 @@ export const loadMapLoadingSettings = (
       return defaults;
     }
 
-    const stored = parsed as StoredMapLoadingSettings;
+    const stored = parsed as StoredMapLoadingSettings | LegacyMapLoadingSettings;
     const previouslyKnown = new Set(stored.knownLayerIds);
     const previouslyVisible = new Set(stored.visibleLayerIds);
     const visibleLayerIds = new Set<string>();
     for (const layer of layerRegistry) {
+      if (layer.id === "analysis-grid") continue;
+      if (stored.version === 1 && layer.id === "road") continue;
       if (previouslyKnown.has(layer.id) ? previouslyVisible.has(layer.id) : layer.defaultVisible) {
         visibleLayerIds.add(layer.id);
       }

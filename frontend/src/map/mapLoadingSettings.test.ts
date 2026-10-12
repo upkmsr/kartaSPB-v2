@@ -45,7 +45,7 @@ describe("map loading settings persistence", () => {
   it("writes a versioned allow-listed payload and tolerates storage failures", () => {
     const storage = storageWith(null);
     saveMapLoadingSettings(
-      { version: 1, autoLoad: false, visibleLayerIds: new Set([...defaultVisibleLayerIds(), "x"]) },
+      { version: 2, autoLoad: false, visibleLayerIds: new Set([...defaultVisibleLayerIds(), "x"]) },
       storage,
     );
     expect(storage.setItem).toHaveBeenCalledWith(
@@ -53,7 +53,7 @@ describe("map loading settings persistence", () => {
       expect.any(String),
     );
     const payload = JSON.parse(storage.setItem.mock.calls[0][1]);
-    expect(payload).toMatchObject({ version: 1, autoLoad: false });
+    expect(payload).toMatchObject({ version: 2, autoLoad: false });
     expect(payload.visibleLayerIds).not.toContain("x");
 
     expect(() =>

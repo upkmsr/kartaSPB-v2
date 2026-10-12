@@ -27,12 +27,16 @@ import type {
   MapNavigationTarget,
   MapRequestState,
 } from "./map/mapTypes";
+import {
+  loadAnalysisPreferences,
+  saveAnalysisPreferences,
+} from "./analysis/analysisPreferences";
 
 type ConnectionState = "checking" | "ready" | "offline";
 const INITIAL_ZOOM = 12;
 
 type ObjectSelection = { id: string; origin: "map" | "search" };
-type HeatmapOwner = "scenario" | "single" | null;
+type HeatmapOwner = "scenario" | null;
 
 export function App() {
   const [backend, setBackend] = useState<ConnectionState>("checking");
@@ -57,6 +61,7 @@ export function App() {
   );
   const [heatmapTileError, setHeatmapTileError] = useState<string | null>(null);
   const [heatmapInspectionEnabled, setHeatmapInspectionEnabled] = useState(false);
+  const [analysisPreferences, setAnalysisPreferences] = useState(loadAnalysisPreferences);
   const navigationSequenceRef = useRef(0);
   const visibleLayerIds = loadingSettings.visibleLayerIds;
 
@@ -90,6 +95,7 @@ export function App() {
   }, [districtRetry]);
 
   useEffect(() => saveMapLoadingSettings(loadingSettings), [loadingSettings]);
+  useEffect(() => saveAnalysisPreferences(analysisPreferences), [analysisPreferences]);
 
   const toggleLayer = (layerId: string) => {
     setLoadingSettings((current) => {
@@ -180,6 +186,9 @@ export function App() {
           heatmapDisplayRange={heatmapDisplayRange}
           heatmapTileError={heatmapTileError}
           heatmapInspectionEnabled={heatmapInspectionEnabled}
+          activeAnalysisMode={analysisPreferences.activeAnalysisMode}
+          scenarioWeights={analysisPreferences.scenarioWeights}
+          scenarioMinScore={analysisPreferences.scenarioMinScore}
           zoom={zoom}
           onExpandedChange={setSidebarExpanded}
           onDistrictToggle={toggleDistrict}
@@ -199,12 +208,6 @@ export function App() {
             setHeatmapOwner("scenario");
             setActiveHeatmap(heatmap);
           }}
-          onSingleHeatmapPrepared={(heatmap) => {
-            setHeatmapTileError(null);
-            setHeatmapInspectionEnabled(false);
-            setHeatmapOwner("single");
-            setActiveHeatmap(heatmap);
-          }}
           onHeatmapDisplayRangeChange={setHeatmapDisplayRange}
           onHeatmapHide={() => {
             setHeatmapTileError(null);
@@ -213,6 +216,15 @@ export function App() {
             setActiveHeatmap(null);
           }}
           onHeatmapInspectionEnabledChange={setHeatmapInspectionEnabled}
+          onActiveAnalysisModeChange={(activeAnalysisMode) =>
+            setAnalysisPreferences((current) => ({ ...current, activeAnalysisMode }))
+          }
+          onScenarioWeightsChange={(scenarioWeights) =>
+            setAnalysisPreferences((current) => ({ ...current, scenarioWeights }))
+          }
+          onScenarioMinScoreChange={(scenarioMinScore) =>
+            setAnalysisPreferences((current) => ({ ...current, scenarioMinScore }))
+          }
         />
 
         <MapWorkspace
